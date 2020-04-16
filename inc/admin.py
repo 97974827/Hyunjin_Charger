@@ -1,8 +1,10 @@
+from main import Application
+from tkinter import *
 
 
-
-class Admin:
+class Admin():
     # Card Init Page
+    login_lbl = ""          # 로그인 라벨
     login_frame = ""
     init_frame = ""
 
@@ -55,6 +57,17 @@ class Admin:
     admin_btn_cancel = ""
     admin_btn_exit = ""
 
+    def admin_test(self):
+        print("admin test")
+
+    def admin_page_init(self, frame):
+        Application.showFrame(self, frame)
+
     # 관리자 페이지, 카드 초기화 페이지 UI 초기화
     def __init__(self):
-        pass
+        print("admin init")
+        # Application.test(self)
+        # self.login_lbl = Label(Application.main_frame(self), bg="#a8c4b9")
+        # self.login_lbl.bind("<Button-1>", Application.showFrame(self.login_frame))
+        # self.login_lbl.place(x=20, y=0)
+

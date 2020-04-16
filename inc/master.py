@@ -4,7 +4,7 @@
 class Master:
     # master page
     master_frame = ""
-
+    master_back = ""
     master_use_label = ""
 
     master_lbl_bonus1 = ""
