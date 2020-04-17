@@ -1,73 +1,105 @@
+# from main import Application
+# import main
+from inc import master
 from main import Application
+
 from tkinter import *
+import tkinter.messagebox
 
 
-class Admin():
-    # Card Init Page
-    login_lbl = ""          # 로그인 라벨
-    login_frame = ""
-    init_frame = ""
-
-    init_use_label = ""     # 매장 ID 입력상태 (성공, 실패)
-    init_lbl_shop_id = ""   # 저장될 매장 ID : 0000
-    init_btn_start = ""
-    init_btn_cancel = ""
-
-    # Admin Page
-    admin_frame = ""
-    admin_lbl_bonus1 = ""
-    admin_lbl_bonus2 = ""
-    admin_lbl_bonus3 = ""
-    admin_lbl_bonus4 = ""
-    admin_lbl_bonus5 = ""
-    admin_lbl_bonus6 = ""
-    admin_lbl_bonus7 = ""
-    admin_lbl_bonus8 = ""
-    admin_lbl_bonus9 = ""
-    admin_lbl_bonus10 = ""
-
-    admin_use_label = ""   # 관리자 환경설정 라벨
-    admin_lbl_version = ""
-
-    admin_lbl_password = ""
-    admin_lbl_card_issued_money = ""
-    admin_lbl_min_card_issued_money = ""
-    admin_lbl_shop_id = ""
-
-    # Entry
-    admin_entry_bonus1 = ""
-    admin_entry_bonus2 = ""
-    admin_entry_bonus3 = ""
-    admin_entry_bonus4 = ""
-    admin_entry_bonus5 = ""
-    admin_entry_bonus6 = ""
-    admin_entry_bonus7 = ""
-    admin_entry_bonus8 = ""
-    admin_entry_bonus9 = ""
-    admin_entry_bonus10 = ""
-
-    admin_entry_password = ""
-    admin_entry_card_issued_money = ""
-    admin_entry_min_card_issued_money = ""
-    admin_entry_shop_id = ""
-
-    # Button
-    admin_btn_init_shop_id = ""
-    admin_btn_save = ""
-    admin_btn_cancel = ""
-    admin_btn_exit = ""
-
-    def admin_test(self):
-        print("admin test")
-
-    def admin_page_init(self, frame):
-        Application.showFrame(self, frame)
+class Admin:
+    # # Card Init Page
+    # btn_hide_login = ""          # 히등 로그인 버튼
+    # frame_login = ""
+    # btn_login_config = ""
+    # btn_login_cancel = ""
+    # frame_card_init = ""
+    #
+    # lbl_init_use = ""       # 매장 ID 입력상태 (성공, 실패)
+    # lbl_init_shop_id = ""   # 저장될 매장 ID : 0000
+    # btn_init_start = ""
+    # btn_init_cancel = ""
+    #
+    # # Admin Page
+    # frame_admin = ""
+    # lbl_admin_bonus1 = ""
+    # lbl_admin_bonus2 = ""
+    # lbl_admin_bonus3 = ""
+    # lbl_admin_bonus4 = ""
+    # lbl_admin_bonus5 = ""
+    # lbl_admin_bonus6 = ""
+    # lbl_admin_bonus7 = ""
+    # lbl_admin_bonus8 = ""
+    # lbl_admin_bonus9 = ""
+    # lbl_admin_bonus10 = ""
+    #
+    # lbl_admin_use = ""       # 관리자 환경설정 라벨
+    # lbl_admin_version = ""
+    #
+    # lbl_admin_password = ""
+    # lbl_admin_card_issued_money = ""
+    # lbl_admin_min_card_issued_money = ""
+    # lbl_admin_shop_id = ""
+    #
+    # # Entry
+    # entry_login = ""
+    # entry_admin_bonus1 = ""
+    # entry_admin_bonus2 = ""
+    # entry_admin_bonus3 = ""
+    # entry_admin_bonus4 = ""
+    # entry_admin_bonus5 = ""
+    # entry_admin_bonus6 = ""
+    # entry_admin_bonus7 = ""
+    # entry_admin_bonus8 = ""
+    # entry_admin_bonus9 = ""
+    # entry_admin_bonus10 = ""
+    #
+    # entry_admin_password = ""
+    # entry_admin_card_issued_money = ""
+    # entry_admin_min_card_issued_money = ""
+    # entry_admin_shop_id = ""
+    #
+    # # Button
+    # btn_admin_init_shop_id = ""
+    # btn_admin_save = ""
+    # btn_admin_cancel = ""
+    # btn_admin_exit = ""
+    #
+    # print("init 보다 먼저시작함")
+    #
+    # def showMsgInfo(self, msg):
+    #     tkinter.messagebox.showinfo("확인", msg)
+    #
+    # def showMsgYesNo(self, msg):
+    #     result = tkinter.messagebox.askyesno("확인", msg)
+    #     return result
+    #
+    # def adminAuthSuccess(self, password):
+    #     if password == "1234":
+    #         self.showFrame(self, self.frame_admin)
+    #     elif password == "gls12q23w":
+    #         self.showFrame(self, self.master.frame_master)
+    #     else:
+    #         msg = "잘못된 비밀번호 입니다."
+    #         self.showMsgInfo(msg)
 
     # 관리자 페이지, 카드 초기화 페이지 UI 초기화
     def __init__(self):
         print("admin init")
+
         # Application.test(self)
-        # self.login_lbl = Label(Application.main_frame(self), bg="#a8c4b9")
-        # self.login_lbl.bind("<Button-1>", Application.showFrame(self.login_frame))
-        # self.login_lbl.place(x=20, y=0)
+        # Admin Login Page
+        # self.hide_login_btn = Button(Application.main_frame, bd=0, bg="#a8c4b9", width=30, height=4,
+        #                                     command=lambda: Application.showFrame(self.login_frame))
+        # self.hide_login_btn.place(x=20, y=0)
+        # # admin_class.login_lbl.bind('<Button-1>', self.showFrame(admin_class.login_frame))
+        #
+        # self.login_entry = Entry(self.login_frame, show="*")
+        # self.login_entry.place(x=387, y=407)
+        # self.login_config_btn = Button(self.login_frame, text="확인", width=6,
+        #                                       command=lambda: self.adminAuthSuccess(self.login_entry.get()))
+        # self.login_config_btn.place(x=540, y=403)
+        # self.login_cancel_btn = Button(self.login_frame, text="취소", width=6,
+        #                                command=lambda: Application.showFrame(Application.main_frame))
+        # self.login_cancel_btn.place(x=600, y=403)
 

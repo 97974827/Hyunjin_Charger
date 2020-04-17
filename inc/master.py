@@ -1,58 +1,58 @@
-
+from inc import admin
 
 
 class Master:
     # master page
-    master_frame = ""
-    master_back = ""
-    master_use_label = ""
-
-    master_lbl_bonus1 = ""
-    master_lbl_bonus2 = ""
-    master_lbl_bonus3 = ""
-    master_lbl_bonus4 = ""
-    master_lbl_bonus5 = ""
-    master_lbl_bonus6 = ""
-    master_lbl_bonus7 = ""
-    master_lbl_bonus8 = ""
-    master_lbl_bonus9 = ""
-    master_lbl_bonus10 = ""
-
-    master_lbl_password = ""
-    master_lbl_card_issued_money = ""
-    master_lbl_min_card_issued_money = ""
-    master_lbl_shop_id = ""
-    master_lbl_manager_info = ""
-    master_lbl_card_address = ""
-
-    # Entry
-    master_entry_bonus1 = ""
-    master_entry_bonus2 = ""
-    master_entry_bonus3 = ""
-    master_entry_bonus4 = ""
-    master_entry_bonus5 = ""
-    master_entry_bonus6 = ""
-    master_entry_bonus7 = ""
-    master_entry_bonus8 = ""
-    master_entry_bonus9 = ""
-    master_entry_bonus10 = ""
-
-    master_entry_password = ""
-    master_entry_card_issued_money = ""
-    master_entry_min_card_issued_money = ""
-    master_entry_shop_id = ""
-
-    # Listbox
-    master_list_manager_info = ""
-    master_list_card_address = ""
-
-    # Button
-    master_btn_db_comfirm = ""
-    master_btn_db_init = ""
-    master_btn_save = ""
-    master_btn_cancel = ""
-    master_btn_exit = ""
+    # frame_master_frame = ""
+    # background_master = ""
+    # lbl_master_use = ""
+    #
+    # lbl_master_bonus1 = ""
+    # lbl_master_bonus2 = ""
+    # lbl_master_bonus3 = ""
+    # lbl_master_bonus4 = ""
+    # lbl_master_bonus5 = ""
+    # lbl_master_bonus6 = ""
+    # lbl_master_bonus7 = ""
+    # lbl_master_bonus8 = ""
+    # lbl_master_bonus9 = ""
+    # lbl_master_bonus10 = ""
+    #
+    # lbl_master_password = ""
+    # lbl_master_card_issued_money = ""
+    # lbl_master_min_card_issued_money = ""
+    # lbl_master_shop_id = ""
+    # lbl_master_manager_info = ""
+    # lbl_master_card_address = ""
+    #
+    # # Entry
+    # entry_master_bonus1 = ""
+    # entry_master_bonus2 = ""
+    # entry_master_bonus3 = ""
+    # entry_master_bonus4 = ""
+    # entry_master_bonus5 = ""
+    # entry_master_bonus6 = ""
+    # entry_master_bonus7 = ""
+    # entry_master_bonus8 = ""
+    # entry_master_bonus9 = ""
+    # entry_master_bonus10 = ""
+    #
+    # entry_master_password = ""
+    # entry_master_card_issued_money = ""
+    # entry_master_min_card_issued_money = ""
+    # entry_master_shop_id = ""
+    #
+    # # Listbox
+    # listbox_master_manager_info = ""
+    # listbox_master_card_address = ""
+    #
+    # # Button
+    # btn_master_db_comfirm = ""
+    # btn_master_db_init = ""
+    # btn_master_save = ""
+    # btn_master_cancel = ""
+    # btn_master_exit = ""
 
     # 마스터 페이지 UI 초기화
     def __init__(self):
-        pass
+        print("master init")
