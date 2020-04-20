@@ -1,14 +1,10 @@
-# from main import Application
-# import main
-from inc import master
-from main import Application
-
 from tkinter import *
 import tkinter.messagebox
 
 
 class Admin:
     # # Card Init Page
+    # background_card_init = ""
     # btn_hide_login = ""          # 히등 로그인 버튼
     # frame_login = ""
     # btn_login_config = ""
@@ -18,6 +14,7 @@ class Admin:
     # lbl_init_use = ""       # 매장 ID 입력상태 (성공, 실패)
     # lbl_init_shop_id = ""   # 저장될 매장 ID : 0000
     # btn_init_start = ""
+    # btn_init_enabel = ""
     # btn_init_cancel = ""
     #
     # # Admin Page
@@ -83,9 +80,12 @@ class Admin:
     #         msg = "잘못된 비밀번호 입니다."
     #         self.showMsgInfo(msg)
 
+
     # 관리자 페이지, 카드 초기화 페이지 UI 초기화
-    def __init__(self):
+    def __init__(self, frame, tk_window):
         print("admin init")
+        self.frame_login = Frame(tk_window)
+        self.entry_login = Entry(self.frame_login, show="*")
 
         # Application.test(self)
         # Admin Login Page

@@ -54,5 +54,5 @@ class Master:
     # btn_master_exit = ""
 
     # 마스터 페이지 UI 초기화
-    def __init__(self):
+    def __init__(self, frame, tk_window):
         print("master init")

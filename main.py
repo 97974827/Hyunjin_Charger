@@ -1,6 +1,8 @@
 from tkinter import *
 from inc import admin
 from inc import master
+from inc import bill
+from inc import ejector
 import tkinter.messagebox
 
 
@@ -64,11 +66,14 @@ class Application:
     lbl_lookup_money = ""
 
     # Class Initialize View
-    # admin_class = admin.Admin()
-    # master_class = master.Master()
+    admin_class = None
+    master_class = None
+    bill_class = None
+    ejector_class = None
 
-    # TODO : 임시 방편
+    # TODO : 임시 방편 admin, master
     # Card Init Page
+    background_card_init = ""
     btn_hide_login = ""          # 히등 로그인 버튼
     frame_login = ""
     btn_login_config = ""
@@ -78,6 +83,7 @@ class Application:
     lbl_init_use = ""       # 매장 ID 입력상태 (성공, 실패)
     lbl_init_shop_id = ""   # 저장될 매장 ID : 0000
     btn_init_start = ""
+    btn_enable_start = ""
     btn_init_cancel = ""
 
     # Admin Page
@@ -175,6 +181,14 @@ class Application:
     btn_master_save = ""
     btn_master_cancel = ""
     btn_master_exit = ""
+    # TODO : admin, master 끝
+
+    def toggleLabel(self, label, label_place):
+        if label.visible:
+            label.place_forget()
+        else:
+            label.place(label_place)
+        label.visible = not label.visible
 
     def showMsgInfo(self, msg):
         tkinter.messagebox.showinfo("확인", msg)
@@ -195,11 +209,20 @@ class Application:
     def showFrame(self, frame):
         frame.tkraise()
 
+    def billThread(self):
+        pass
+
+
     # UI Initialize
     def __init__(self):
         self.tk_window = Tk()                        # 윈도우창 생성
+        self.admin_class = admin.Admin(self, self.tk_window)
+        self.master_class = master.Master(self, self.tk_window)
+        self.bill_class = bill.Bill()
+        self.ejector_class = ejector.Ejector()
+
         self.tk_window.title("kang hyun jin")        # 윈도우이름.title("제목")
-        self.tk_window.geometry("1024x768+0+0")    # 윈도우이름.geometry("너비x높이+xpos+ypos")
+        self.tk_window.geometry("1024x768+0+0")      # 윈도우이름.geometry("너비x높이+xpos+ypos")
         self.tk_window.resizable(False, False)       # 윈도우이름.resizeable(상하,좌우) : 인자 상수를 입력해도 적용가능
 
         self.frame_main = Frame(self.tk_window)
@@ -239,6 +262,10 @@ class Application:
         lookup_btn_image = PhotoImage(file="./images/lookup_on_btn.png")
         main_use_image = PhotoImage(file="./images/main_use_label.png")
 
+        btn_init_start_image = PhotoImage(file="./images/init_start_btn.png")
+        btn_init_enable_image = PhotoImage(file="./images/init_start_btn_enable.png")
+        btn_init_quit_image = PhotoImage(file="./images/init_quit_btn.png")
+
         # 테스트
         # main_image = PhotoImage(file="./images/test_back.png")
         # self.main_back = Label(self.main_frame, image=main_image).pack()
@@ -256,29 +283,31 @@ class Application:
         self.background_charge_page_2 = Label(self.frame_charge_page_2, image=charge2_frame_image).pack()
         self.background_issued = Label(self.frame_issued, image=issued_frame_image).pack()
         self.background_lookup = Label(self.frame_lookup, image=lookup_frame_image).pack()
+        self.background_card_init = Label(self.frame_card_init, image=main_frame_image).pack()
 
         # Main View
-        self.btn_charge_on = Button(self.frame_main, image=charge_btn_image, bd=0, bg="#a8c4b9",
+        self.btn_charge_on = Button(self.frame_main, image=charge_btn_image, bd=0, bg="#a8c4b9", activebackground='#a8c4b9',
                                     command=lambda:self.showFrame(self.frame_charge))
         self.btn_charge_on.place(x=90, y=240)
 
-        self.btn_issued_on = Button(self.frame_main, image=issued_btn_image, bd=0, bg="#a8c4b9",
+        self.btn_issued_on = Button(self.frame_main, image=issued_btn_image, bd=0, bg="#a8c4b9", activebackground='#a8c4b9',
                                     command=lambda:self.showFrame(self.frame_issued))
         self.btn_issued_on.place(x=390, y=240)
 
-        self.btn_lookup_on = Button(self.frame_main, image=lookup_btn_image, bd=0, bg="#a8c4b9",
+        self.btn_lookup_on = Button(self.frame_main, image=lookup_btn_image, bd=0, bg="#a8c4b9", activebackground='#a8c4b9',
                                     command=lambda:self.showFrame(self.frame_lookup))
         self.btn_lookup_on.place(x=690, y=240)
 
         self.lbl_main_hello = Label(self.frame_main, text="저희 세차장을 이용해주셔서 감사합니다.", font=("Corier", 20), bg="#a8c4b9")
         self.lbl_main_hello.place(x=60, y=70)
+
         self.lbl_main_use = Label(self.frame_main, image=main_use_image, bd=0)  # bd=테두리 두께(default:2)
         self.lbl_main_use.place(x=280, y=532)
         self.lbl_main_money = Label(self.frame_main, text="투입금액      0 원", font=("Corier", 30, "bold"), bg="#a8c4b9")
         self.lbl_main_money.place(x=330, y=705)
 
         # Admin Login Page
-        self.btn_hide_login = Button(self.frame_main, bd=0, bg="#a8c4b9", width=30, height=4,
+        self.btn_hide_login = Button(self.frame_main, bd=0, bg="#a8c4b9", width=30, height=4, activebackground='#a8c4b9',
                                        command=lambda:self.showFrame(self.frame_login))
         self.btn_hide_login.place(x=20, y=0)
 
@@ -369,7 +398,7 @@ class Application:
         self.entry_admin_shop_id.place(x=700, y=450)
 
         self.btn_admin_init_shop_id = Button(self.frame_admin, text="매장 ID 등록 모드 진입", activebackground="blue",
-                                             font=("", 13, "bold"), width=20, height=2)
+                                             command=lambda:self.showFrame(self.frame_card_init), font=("", 13, "bold"), width=20, height=2)
         self.btn_admin_init_shop_id.place(x=700, y=550)
 
         self.btn_admin_save = Button(self.frame_admin, text="저    장", width=20, height=2, font=("", 15, "bold")
@@ -381,6 +410,17 @@ class Application:
         self.btn_admin_exit = Button(self.frame_admin, text="프로그램\n종료", width=10, height=2, font=("", 15, "bold")
                                      )
         self.btn_admin_exit.place(x=850, y=650)
+
+        # Card_Init_Page
+        self.lbl_init_use = Label(self.frame_card_init, text="매장 ID 입력 상태 : X", font=("", 30, "bold"), anchor="e", bg="#a8c4b9")
+        self.lbl_init_use.place(x=355, y=50)
+        self.lbl_init_shop_id = Label(self.frame_card_init, text="저장될 매장 ID : 0000", font=("", 30, "bold"), anchor="e", bg="#a8c4b9")
+        self.lbl_init_shop_id.place(x=340, y=155)
+        self.btn_init_start = Button(self.frame_card_init, image=btn_init_start_image, bd=0, bg="#a8c4b9", activebackground='#a8c4b9')
+        self.btn_init_start.place(x=250, y=235)
+        self.btn_init_cancel = Button(self.frame_card_init, image=btn_init_quit_image, bd=0, bg="#a8c4b9", activebackground='#a8c4b9',
+                                      command=lambda:self.showFrame(self.frame_main))
+        self.btn_init_cancel.place(x=550, y=235)
 
         # Master Page
         self.lbl_master_use = Label(self.frame_master, text="마스터 환경설정", font=("", 40, "bold"), anchor="e")
@@ -470,14 +510,12 @@ class Application:
         self.btn_master_db_init = Button(self.frame_master, text="데이터베이스 초기화")
         self.btn_master_db_init.place(x=850, y=600)
 
-        self.btn_master_save = Button(self.frame_master, text="저    장", width=20, height=2, font=("", 15, "bold")
-                                     )
+        self.btn_master_save = Button(self.frame_master, text="저    장", width=20, height=2, font=("", 15, "bold"))
         self.btn_master_save.place(x=250, y=650)
         self.btn_master_cancel = Button(self.frame_master, text="취    소", width=20, height=2, font=("", 15, "bold"),
                                        command=lambda: self.showFrame(self.frame_main))
         self.btn_master_cancel.place(x=500, y=650)
-        self.btn_master_exit = Button(self.frame_master, text="프로그램\n종료", width=10, height=2, font=("", 15, "bold")
-                                     )
+        self.btn_master_exit = Button(self.frame_master, text="프로그램\n종료", width=10, height=2, font=("", 15, "bold"))
         self.btn_master_exit.place(x=850, y=650)
 
         # self.admin_class.btn_hide_login = Button(self.frame_main, bd=0, bg="#a8c4b9", width=30, height=4,
@@ -496,10 +534,10 @@ class Application:
 
         # Charge Card Page
         self.btn_charge_back = Button(self.frame_charge, image=charge_back_btn_image, bd=0, bg="#a8c4b9",
-                                    command=lambda:self.showFrame(self.frame_main))
+                                    activebackground='#a8c4b9', command=lambda:self.showFrame(self.frame_main))
         self.btn_charge_back.place(x=57, y=657)
         self.btn_charge_next_on = Button(self.frame_charge, image=charge_next_btn_on_image, bd=0, bg="#a8c4b9",
-                                    command=lambda:self.showFrame(self.frame_charge_page_1))
+                                    activebackground='#a8c4b9', command=lambda:self.showFrame(self.frame_charge_page_1))
         self.btn_charge_next_on.place(x=833, y=657)    # hidden state 다음 버튼위치
         # self.charge_next_btn_on.place(x=777, y=630)  # gif 다음 버튼위치
         self.lbl_charge_money = Label(self.frame_charge, text="0 원", fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
@@ -513,23 +551,23 @@ class Application:
 
         # TODO : 하드웨어 테스트 이후 지워야할 화면처리
         self.btn_charge1_back = Button(self.frame_charge_page_1, image=charge_back_btn_image, bd=0, bg="#a8c4b9",
-                                    command=lambda:self.showFrame(self.frame_charge))
+                                    activebackground='#a8c4b9', command=lambda:self.showFrame(self.frame_charge))
         self.btn_charge1_back.place(x=57, y=657)
 
         self.temp_charge1_next_btn = Button(self.frame_charge_page_1, image=charge_next_btn_on_image, bd=0, bg="#a8c4b9",
-                                    command=lambda: self.showFrame(self.frame_charge_page_2))
+                                    activebackground='#a8c4b9', command=lambda: self.showFrame(self.frame_charge_page_2))
         self.temp_charge1_next_btn.place(x=833, y=657)
         self.temp_charge2_next_btn = Button(self.frame_charge_page_2, image=charge_next_btn_on_image, bd=0, bg="#a8c4b9",
-                                            command=lambda: self.showFrame(self.frame_main))
+                                            activebackground='#a8c4b9', command=lambda: self.showFrame(self.frame_main))
         self.temp_charge2_next_btn.place(x=833, y=657)
         # TODO : 끝
 
         # Issued Card Page
         self.btn_issued_back = Button(self.frame_issued, image=charge_back_btn_image, bd=0, bg="#a8c4b9",
-                                    command=lambda:self.showFrame(self.frame_main))
+                                    activebackground='#a8c4b9', command=lambda:self.showFrame(self.frame_main))
         self.btn_issued_back.place(x=57, y=657)
         self.btn_issued_next_on = Button(self.frame_issued, image=charge_next_btn_on_image, bd=0, bg="#a8c4b9",
-                                      command=lambda: self.showFrame(self.frame_main))
+                                      activebackground='#a8c4b9', command=lambda: self.showFrame(self.frame_main))
         self.btn_issued_next_on.place(x=833, y=657)
 
         self.lbl_issued_money = Label(self.frame_issued, text="0 원", fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
@@ -539,7 +577,7 @@ class Application:
 
         # Lookup Card Page
         self.btn_lookup_back = Button(self.frame_lookup, image=charge_back_btn_image, bd=0, bg="#a8c4b9",
-                                    command=lambda:self.showFrame(self.frame_main))
+                                    activebackground='#a8c4b9', command=lambda:self.showFrame(self.frame_main))
         self.btn_lookup_back.place(x=57, y=657)
         self.lbl_lookup_money = Label(self.frame_lookup, text="0 원", fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
         self.lbl_lookup_money.place(x=740, y=223)
@@ -550,6 +588,4 @@ class Application:
 
 
 if __name__ == '__main__':
-    # master_class = master.Master()
-    # admin_class = admin.Admin()
     main = Application()
