@@ -3,10 +3,20 @@ from inc import admin
 from inc import master
 from inc import bill
 from inc import ejector
+from inc import RFreader
 import tkinter.messagebox
+import threading
 
 
 class Application:
+
+
+    main_input_money = 0
+    main_input_bonus = 0
+    main_total_money = 0
+
+    main_min_issued_money = 1000
+
     '''UI Control Variable'''
     # Main View
     tk_window = ""
@@ -70,6 +80,8 @@ class Application:
     master_class = None
     bill_class = None
     ejector_class = None
+    reader_class = None
+    common_class = None
 
     # TODO : 임시 방편 admin, master
     # Card Init Page
@@ -209,8 +221,57 @@ class Application:
     def showFrame(self, frame):
         frame.tkraise()
 
-    def billThread(self):
-        pass
+    def initInputMoney(self):
+        self.main_input_money = 0
+        self.main_input_bonus = 0
+
+    def threadUIBillReader(self, second=0.8):
+        if self.main_input_money > 0:
+            self.lbl_charge_money.config(text="{:,} 원".format(str(self.main_input_money)))
+            self.lbl_charge_page_1_money.config(text="{:,} 원".format(str(self.main_input_money)))
+            self.lbl_charge_page_2_money.config(text="{:,} 원".format(str(self.main_input_money)))
+            self.lbl_issued_money.config(text="{:,} 원".format(str(self.main_input_money)))
+            self.lbl_issued_card_issued_money.config(text=str(self.main_min_issued_money) + " 원")
+
+            self.lbl_charge_money.place(x=600, y=223)
+            self.lbl_charge_page_1_money.place(x=600, y=223)
+            self.lbl_charge_page_2_money.place(x=600, y=223)
+            self.lbl_issued_money.place(x=600, y=223)
+            self.lbl_issued_card_issued_money.place(x=775, y=298)
+
+            if self.main_input_money > 0:
+                lbl_font_color = "red"
+            else:
+                lbl_font_color = "black"
+            self.lbl_main_money.config(text="투입금액       " + str(self.main_input_money) + " 원", fg=lbl_font_color)
+
+        bill_ui_thread = threading.Timer(second, self.threadUIBillReader)
+        bill_ui_thread.daemon = True
+        bill_ui_thread.start()
+
+    # second is defalut config -> not typeError
+    def threadBillReader(self, second=1.0):
+        bill_status = self.bill_class.billSendData("getActiveStatus")
+        if bill_status == 1 or bill_status == 11:
+            bill_data = self.bill_class.billSendData("billdata")
+
+            if type(bill_data) == int and bill_data > 0:
+                self.main_input_money += bill_data
+                # print("현재 투입금액 : ", self.main_input_money)
+            self.bill_class.billSendData("insertE")
+
+        bill_thread = threading.Timer(second, self.threadBillReader)
+        bill_thread.daemon = True
+        bill_thread.start()
+
+
+    ''' 프로그램 시작 '''
+    def initiaLize(self):
+        # BILL Thread
+        self.threadBillReader(1.0)
+        self.threadUIBillReader(0.8)
+
+        # RFreader Thread
 
 
     # UI Initialize
@@ -303,7 +364,7 @@ class Application:
 
         self.lbl_main_use = Label(self.frame_main, image=main_use_image, bd=0)  # bd=테두리 두께(default:2)
         self.lbl_main_use.place(x=280, y=532)
-        self.lbl_main_money = Label(self.frame_main, text="투입금액      0 원", font=("Corier", 30, "bold"), bg="#a8c4b9")
+        self.lbl_main_money = Label(self.frame_main, text="투입금액      0 원", font=("Corier", 30, "bold"), bg="#a8c4b9", anchor="e")
         self.lbl_main_money.place(x=330, y=705)
 
         # Admin Login Page
@@ -584,6 +645,7 @@ class Application:
 
         # 시작전 메인 프레임 이미지초기화
         self.showFrame(self.frame_main)
+        self.initiaLize()
         self.tk_window.mainloop()  # 윈도우가 종료될 때까지 실행
 
 

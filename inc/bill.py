@@ -112,9 +112,9 @@ class Bill:
                     event_tx_idx = receive_str.find("$ES")
 
                     if event_tx_idx >= 0:
-                        checksum = 0x65 + 0x73 + res[event_tx_idx + 3]
-                        req = bytearray([0x24, 0x65, 0x73, res[event_tx_idx + 3], checksum])
-                        self.bill_serial.readline(self.bill_serial.write(bytes(req)))
+                        check_sum = 0x65 + 0x73 + self.bill_receive_data[event_tx_idx + 3]
+                        trans_str = bytearray([0x24, 0x65, 0x73, self.bill_receive_data[event_tx_idx + 3], check_sum])
+                        self.bill_serial.readline(self.bill_serial.write(bytes(trans_str)))
 
 
         except FileNotFoundError as error:
@@ -174,15 +174,15 @@ class Bill:
     def billCloseSerial(self):
         if self.bill_serial:
             if self.bill_serial.isOpen():
-                print("bill serial close")
                 self.bill_serial.close()
 
 
 # TODO : Test Code
 if __name__ == '__main__':
-    app = Bill()
+    pass
+    # app = Bill()
     # res = app.billSendData("hi")
-    res = app.billSendData("insertE")
+    # res = app.billSendData("insertE")
     # res = app.billSendData("billdata")
-    print("res : ", res)
+    # print("res : ", res)
     # # app.billSendData("insertD")
