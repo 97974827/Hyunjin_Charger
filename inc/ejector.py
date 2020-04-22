@@ -129,7 +129,7 @@ class Ejector:
     def ejectorCloseSerial(self):
         if self.ejector_serial:
             if self.ejector_serial.isOpen():
-                print("Ejector Serial Close")
+                # print("Ejector Serial Close")
                 self.ejector_serial.close()
 
 

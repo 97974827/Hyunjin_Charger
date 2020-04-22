@@ -1,9 +1,6 @@
 from tkinter import *
-from inc import admin
-from inc import master
-from inc import bill
-from inc import ejector
-from inc import RFreader
+from smartcard.CardMonitoring import CardMonitor
+from inc import admin, master, bill, ejector, RFreader, sound
 import tkinter.messagebox
 import threading
 
@@ -81,6 +78,7 @@ class Application:
     bill_class = None
     ejector_class = None
     reader_class = None
+    sound_class = None
     common_class = None
 
     # TODO : 임시 방편 admin, master
@@ -218,8 +216,36 @@ class Application:
             msg = "잘못된 비밀번호 입니다."
             self.showMsgInfo(msg)
 
+    # Raise Frame
     def showFrame(self, frame):
         frame.tkraise()
+
+    def initState(self):
+        self.reader_class.CHARGE_STATE = False
+        self.reader_class.ISSUED_STATE = False
+        self.reader_class.LOOKUP_STATE = True
+        self.reader_class.INIT_STATE = False
+
+    def getMainButtonImage(self, value):
+        button_image = ""
+
+        if value == 1:
+            self.bill_class.billSendData("hi")
+            if self.bill_class.BILL_CONNECT:
+                button_image = "./images/charge_on_btn.png"
+            else:
+                button_image = "./images/charge_off_btn.png"
+        elif value == 2:
+            self.ejector_class.ejectorSendData("hi")
+            if self.ejector_class.EJECTOR_CONNECT:
+                button_image = "./images/issued_on_btn.png"
+            else:
+                button_image = "./images/issued_off_btn.png"
+        elif value == 3:
+            button_image = "./images/lookup_on_btn.png"
+
+        result = PhotoImage(file=button_image)
+        return result
 
     def initInputMoney(self):
         self.main_input_money = 0
@@ -227,17 +253,19 @@ class Application:
 
     def threadUIBillReader(self, second=0.8):
         if self.main_input_money > 0:
-            self.lbl_charge_money.config(text="{:,} 원".format(str(self.main_input_money)))
-            self.lbl_charge_page_1_money.config(text="{:,} 원".format(str(self.main_input_money)))
-            self.lbl_charge_page_2_money.config(text="{:,} 원".format(str(self.main_input_money)))
-            self.lbl_issued_money.config(text="{:,} 원".format(str(self.main_input_money)))
-            self.lbl_issued_card_issued_money.config(text=str(self.main_min_issued_money) + " 원")
+            self.lbl_main_money.config(text="{:,} 원".format(self.main_input_money))
+            self.lbl_charge_money.config(text="{:,} 원".format(self.main_input_money))
+            self.lbl_charge_page_1_money.config(text="{:,} 원".format(self.main_input_money))
+            self.lbl_charge_page_2_money.config(text="{:,} 원".format(self.main_input_money))
+            self.lbl_issued_money.config(text="{:,} 원".format(self.main_input_money))
+            self.lbl_issued_card_issued_money.config(text="{:,} 원".format(self.main_min_issued_money))
 
-            self.lbl_charge_money.place(x=600, y=223)
-            self.lbl_charge_page_1_money.place(x=600, y=223)
-            self.lbl_charge_page_2_money.place(x=600, y=223)
-            self.lbl_issued_money.place(x=600, y=223)
-            self.lbl_issued_card_issued_money.place(x=775, y=298)
+            self.lbl_main_money.place(x=330, y=705)
+            self.lbl_charge_money.place(x=570, y=223)
+            self.lbl_charge_page_1_money.place(x=570, y=223)
+            self.lbl_charge_page_2_money.place(x=570, y=223)
+            self.lbl_issued_money.place(x=570, y=223)
+            self.lbl_issued_card_issued_money.place(x=765, y=298)
 
             if self.main_input_money > 0:
                 lbl_font_color = "red"
@@ -257,6 +285,7 @@ class Application:
 
             if type(bill_data) == int and bill_data > 0:
                 self.main_input_money += bill_data
+                self.reader_class.input_money += bill_data
                 # print("현재 투입금액 : ", self.main_input_money)
             self.bill_class.billSendData("insertE")
 
@@ -264,15 +293,16 @@ class Application:
         bill_thread.daemon = True
         bill_thread.start()
 
-
-    ''' 프로그램 시작 '''
     def initiaLize(self):
-        # BILL Thread
+        # BILL Thread Start
         self.threadBillReader(1.0)
         self.threadUIBillReader(0.8)
 
-        # RFreader Thread
-
+        # RF reader Thread Start
+        cardmonitor = CardMonitor()
+        self.reader_class = RFreader.Reader()
+        cardmonitor.addObserver(self.reader_class)
+        self.reader_class.LOOKUP_STATE = True
 
     # UI Initialize
     def __init__(self):
@@ -281,6 +311,7 @@ class Application:
         self.master_class = master.Master(self, self.tk_window)
         self.bill_class = bill.Bill()
         self.ejector_class = ejector.Ejector()
+        self.sound_class = sound.Sound()
 
         self.tk_window.title("kang hyun jin")        # 윈도우이름.title("제목")
         self.tk_window.geometry("1024x768+0+0")      # 윈도우이름.geometry("너비x높이+xpos+ypos")
@@ -317,10 +348,11 @@ class Application:
         charge_next_btn_on_image = PhotoImage(file="./images/next_btn_on.png")
         charge_next_btn_gif_image = PhotoImage(file="./images/next_btn_ani.gif")
 
-        # TODO : 하드웨어 테스트 할 때 ON, OFF 처리해야함
-        charge_btn_image = PhotoImage(file="./images/charge_on_btn.png")
-        issued_btn_image = PhotoImage(file="./images/issued_on_btn.png")
-        lookup_btn_image = PhotoImage(file="./images/lookup_on_btn.png")
+        # Main Button Image
+        charge_btn_image = self.getMainButtonImage(1)
+        issued_btn_image = self.getMainButtonImage(2)
+        lookup_btn_image = self.getMainButtonImage(3)
+
         main_use_image = PhotoImage(file="./images/main_use_label.png")
 
         btn_init_start_image = PhotoImage(file="./images/init_start_btn.png")
