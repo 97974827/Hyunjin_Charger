@@ -22,12 +22,13 @@ class Bill:
     # trans_str : argument from main
     def billSendData(self, trans_str):
         try:
-            self.billConnectSerial()
+            # self.billConnectSerial()
+            self.bill_serial = serial.Serial(self.BILL_PORT, self.BILL_BAUD, timeout=1)
 
             if trans_str == "hi":
-                check_sum = 0x48 + 0x69 + 0x3F
-                trans_data = bytearray([0x24, 0x48, 0x69, 0x3F, check_sum])
-                self.bill_receive_data = self.bill_serial.readline(self.bill_serial.write(trans_data))
+                check_sum = 0x48 + 0x69 + 0x3f
+                trans_data = bytearray([0x24, 0x48, 0x69, 0x3f, check_sum])
+                self.bill_receive_data = self.bill_serial.read(self.bill_serial.write(bytes(trans_data)))
                 receive_str = "".join(map(chr, self.bill_receive_data))
 
                 # connection success
@@ -116,7 +117,6 @@ class Bill:
                         trans_str = bytearray([0x24, 0x65, 0x73, self.bill_receive_data[event_tx_idx + 3], check_sum])
                         self.bill_serial.readline(self.bill_serial.write(bytes(trans_str)))
 
-
         except FileNotFoundError as error:
             print("지정된 파일을 찾을수 없습니다 :  ", error)
             self.BILL_CONNECT = False
@@ -126,7 +126,12 @@ class Bill:
         except UnicodeDecodeError as error:
             print("디코딩 오류 : ", error)
             self.BILL_CONNECT = False
+        except serial.serialutil.SerialException as error:
+            print("오류 명령어 >> " + trans_str)
+            print("시리얼 오류 : ", error)
+            self.BILL_CONNECT = False
         except Exception as error:
+            print("bill 오류 명령어 >> " + trans_str)
             print("오류를 알 수 없습니다 : ", error)
             self.BILL_CONNECT = False
         finally:

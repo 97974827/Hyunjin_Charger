@@ -1,4 +1,4 @@
-#!c:\users\82105\pycharmprojects\touch charger\venv\scripts\python.exe
+#!C:\Users\82105\PycharmProjects\Touch Charger\venv\Scripts\python.exe
 #
 # Very simple serial terminal
 #

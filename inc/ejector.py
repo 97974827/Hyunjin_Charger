@@ -18,7 +18,8 @@ class Ejector:
     # Card Ejector Connection
     def ejectorSendData(self, trans_str):
         try:
-            self.ejectorConnectSerial()
+            # self.ejectorConnectSerial()
+            self.ejector_serial = serial.Serial(self.EJECTOR_PORT, self.EJECTOR_BAUD, timeout=1)
 
             if trans_str == "hi":
                 check_sum = 0x48 + 0x49 + 0x3f
@@ -114,6 +115,7 @@ class Ejector:
             print("디코딩 오류 : ", error)
             self.EJECTOR_CONNECT = False
         except Exception as error:
+            print("ejector 오류 명령어 >> " + trans_str)
             print("오류를 알 수 없습니다 : ", error)
             self.EJECTOR_CONNECT = False
         finally:

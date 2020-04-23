@@ -10,8 +10,10 @@ class Sound:
     def playSound(self, file_sound):
         self.sound = pygame.mixer.Sound(file_sound)
         self.sound.play()
-        time.sleep(4)
-        self.stopSound()
+
+        # time.sleep(4)
+        # self.stopSound()
+
         # pygame.mixer.music.load("../msgs/msg001.wav")
         # clock = pygame.time.Clock()
         # while pygame.mixer.music.get_busy():
