@@ -8,17 +8,20 @@ import time
 
 
 class Application:
-    # 충전, 발급, 조회 음성 스레드 상태
-    bool_thread_charge_sound_state = False
-    bool_thread_issued_sound_state = False
-    bool_thread_lookup_sound_state = False
 
     # 메인 UI 제어 스레드 변수
     thread_main_ui_control_view = ""
 
-    main_input_money = 0
-    main_input_bonus = 0
-    main_total_money = 0
+    # 충전 음성 스레드
+    thread_sound_bill_input = ""          # 지폐 투입 스레드
+    count_thread_sound_bill_input = 0     # 지폐 투입 스레드 카운트
+    bool_thread_sound_bill_input = False  # 지폐 투입 스레드 플래그
+
+
+
+    main_input_money = 0             # 현재 투입금액
+    main_input_bonus = 0             # 투입금액에 따른 보너스
+    main_total_money = 0             # 투입금액 + 보너스
 
     main_min_issued_money = 1000
 
@@ -206,7 +209,7 @@ class Application:
     btn_master_exit = ""
     # TODO : admin, master 끝
 
-    def mainLabelVisible(self, second=1.5):
+    def mainLabelVisible(self, second=3.0):
         self.common_class.toggleLabel(self.lbl_main_use, self.lbl_main_use_place)
 
         if self.main_input_money > 0:
@@ -287,6 +290,7 @@ class Application:
         self.btn_issued.config(state="disabled")
         self.btn_lookup.config(state="disabled")
 
+        # 음성 재생중 일때 중지
         if self.sound_class.getBusySound():
             self.sound_class.stopSound()
 
@@ -297,20 +301,63 @@ class Application:
         self.reader_class.ISSUED_STATE = False
         self.reader_class.LOOKUP_STATE = True
 
-        self.showFrame(self.frame_charge)
-        # self.viewChargePage1SoundThread(0, 3)
+        self.bool_thread_sound_bill_input = False  # 지폐 투입 음성스레드 ON
 
-    # 충전 페이지 진입 후 - 지폐를 투입하여 주세요 음성 스레드
-    def viewChargePage1SoundThread(self, sound_count=0, second=3):
+        self.showFrame(self.frame_charge)
+        self.viewInputMoneySoundThread(3)
+
+    # 충전 페이지 진입 후 - "지폐를 투입하여 주세요" 음성 스레드
+    def viewInputMoneySoundThread(self, second=3):
+        # ON 상태일때 종료
+        if self.bool_thread_sound_bill_input:
+            print("지폐 투입 음성 스레드 : ", self.bool_thread_sound_bill_input)
+            return
+
+        # 음성 재생중이 아니라면
+        if not self.sound_class.getBusySound():
+            if self.reader_class.input_money > 0:  # 투입금액이 있을 때
+                self.sound_class.playSound("./msgs/msg009.wav")  # 지폐를 더 투입하거나 다음 버튼을 눌러주세요
+            else:
+                self.sound_class.playSound("./msgs/msg008.wav")  # 지폐를 투입하여 주세요
+
+
+        # sound_count += 1
+        self.count_bill_input_sound += 1
+        print(self.count_bill_input_sound)
+        if self.count_bill_input_sound >= 5:
+            if self.sound_class.getBusySound():
+                self.sound_class.stopSound()
+
+            self.bool_thread_sound_bill_input = True
+            self.sound_class.playSound("./msgs/msg020.wav")      # 일정 시간동안 지폐투입 하지않아 메인화면 이동합니다
+
+            self.showFrame(self.frame_main)
+            self.resetMainView()
+
+            self.count_bill_input_sound = 0         # 스레드 카운트 초기화
+            self.thread_sound_bill_input.cancel()   # 지폐 투입 스레드 취소
+
+        self.thread_sound_bill_input = threading.Timer(second, self.viewInputMoneySoundThread)
+        self.thread_sound_bill_input.daemon = True
+        self.thread_sound_bill_input.start()
+
+    # 충전 종료
+    def chargeQuit(self):
+        self.btn_charge.config(state="active")
+        self.btn_issued.config(state="active")
+        self.btn_lookup.config(state="active")
+
+        self.reader_class.CHARGE_STATE = False
+        self.reader_class.ISSUED_STATE = False
+        self.reader_class.LOOKUP_STATE = True
+        self.reader_class.INIT_STATE = False
+
         if self.sound_class.getBusySound():
             self.sound_class.stopSound()
 
-        self.sound_class.playSound("./msgs/msg008.wav")
+        self.showFrame(self.frame_main)
 
-
-        thread_sound_bill_input = threading.Timer(second, self.viewChargePage1SoundThread)
-        thread_sound_bill_input.daemon = True
-        thread_sound_bill_input.start()
+        self.thread_sound_bill_input.cancel()
 
     # 발급 버튼 눌렀을때 이벤트
     def startIssuedButton(self):
@@ -356,8 +403,8 @@ class Application:
             self.sound_class.stopSound()
 
         # 잔액조회 스레드 살아있으면 종료
-        if self.bool_thread_lookup_sound_state:
-            self.thread_main_ui_control_view.cancel()
+        # if self.bool_thread_lookup_sound_state:
+        #     self.thread_main_ui_control_view.cancel()
 
         self.resetMainView()
 
@@ -366,6 +413,7 @@ class Application:
         self.main_input_money = 0
         self.main_input_bonus = 0
         self.main_total_money = 0
+
         self.reader_class.remain_money = 0
         self.reader_class.input_money = 0
         self.reader_class.input_bonus = 0
@@ -374,14 +422,32 @@ class Application:
     # 메인 UI 제어 스레드 - 충전, 발급, 조회, 초기화 모두 해당
     # Main UI control thread - for charge, issue, lookup, initialization
     def threadUIMainView(self, second=1.0):
+        # 초기화 여부 검사
         if self.reader_class.INIT_STATE:
             pass
 
-        if self.reader_class.CHARGE_STATE:
-            pass
-        # elif self.reader_class.LOOKUP_STATE:
-        if self.reader_class.lookup_flag == "1":
-            self.bool_thread_lookup_sound_state = False
+        # 충전 여부 검사
+        if self.reader_class.flag_charge:
+            self.reader_class.CHARGE_STATE = False
+            self.reader_class.ISSUED_STATE = False
+
+            self.lbl_charge_page_2_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.reader_class.total_money))))
+            self.lbl_charge_page_2_money.place(x=570, y=223)
+
+            self.showFrame(self.frame_charge_page_2)
+
+            if self.sound_class.getBusySound():
+                self.sound_class.stopSound()
+
+            self.sound_class.playSound("./msgs/msg013.wav")  # 충전 완료 음성
+            self.reader_class.flag_charge = False  # 충전 플래그 OFF
+
+            time.sleep(2.5)
+            self.initViewMoney()
+            self.resetMainView()
+
+        # 조회 여부 검사
+        elif self.reader_class.flag_lookup:
 
             self.reader_class.CHARGE_STATE = False
             self.reader_class.ISSUED_STATE = False
@@ -394,9 +460,8 @@ class Application:
             if self.sound_class.getBusySound():
                 self.sound_class.stopSound()
 
-            # 잔액 조회 완료 음성
-            self.sound_class.playSound("./msgs/msg018.wav")
-            self.threadUIMainView(1)
+            self.sound_class.playSound("./msgs/msg018.wav")  # 잔액 조회 완료 음성
+            self.reader_class.flag_lookup = False   # 잔액 플래그 OFF
 
             time.sleep(2.5)
             self.initViewMoney()
@@ -437,7 +502,7 @@ class Application:
         ui_money_thread.start()
 
     # second is defalut config -> not typeError
-    # 지폐인식기 스레드
+    # 지폐인식 스레드
     def threadBillReader(self, second=1.0):
         bill_status = self.bill_class.billSendData("getActiveStatus")
         if bill_status == 1 or bill_status == 11:
@@ -453,10 +518,14 @@ class Application:
         bill_thread.daemon = True
         bill_thread.start()
 
+    # 지폐 들어왔나 확인 음성 스레드
+    def threadConfirmBillSound(self):
+        pass
+
     def initialiZation(self):
         # Init Bill Start
         self.bill_class.billSendData("insertE")
-        self.mainLabelVisible(1.5)
+        self.mainLabelVisible(3.0)
 
         # BILL Thread Start
         # if 'Linux' in platform.system():
@@ -469,7 +538,8 @@ class Application:
         self.reader_class.LOOKUP_STATE = True
 
         # 메인 금액 뷰 실시간 조회 스레드
-        self.threadChangeMoneyView(1)
+        self.threadChangeMoneyView(1)   # 화면 금액 변경 스레드
+        self.threadUIMainView(1)        # 충전, 조회 플래그 검사 후
 
     # UI Initialize
     def __init__(self):
@@ -812,17 +882,17 @@ class Application:
         self.gif_charge_image.start()
 
         self.btn_charge_back = Button(self.frame_charge, image=charge_back_btn_image, bd=0, bg="#a8c4b9",
-                                      activebackground='#a8c4b9', command=lambda:self.resetMainView())
+                                      activebackground='#a8c4b9', command=lambda:self.chargeQuit())
         self.btn_charge_back.place(x=57, y=657)
         self.btn_charge_next_on = Button(self.frame_charge, image=charge_next_btn_on_image, bd=0, bg="#a8c4b9",
                                     activebackground='#a8c4b9', command=lambda:self.showFrame(self.frame_charge_page_1))
         self.btn_charge_next_on.place(x=833, y=657)    # hidden state 다음 버튼위치
         # self.btn_charge_next_gif.place(x=777, y=630)  # gif 다음 버튼위치
 
-        self.btn_charge_next_gif = AnimatedGif.AnimatedGif(self.frame_charge, './images/next_btn_ani.gif', 0.8)
-        self.btn_charge_next_gif.config(bg="#a8c4b9", activebackground='#a8c4b9')
-        self.btn_charge_next_gif.place(x=777, y=630)
-        self.btn_charge_next_gif.start()
+        # self.btn_charge_next_gif = AnimatedGif.AnimatedGif(self.frame_charge, './images/next_btn_ani.gif', 0.8)
+        # self.btn_charge_next_gif.config(bg="#a8c4b9", activebackground='#a8c4b9')
+        # self.btn_charge_next_gif.place(x=777, y=630)
+        # self.btn_charge_next_gif.start()
 
         self.lbl_charge_money = Label(self.frame_charge, text="0 원", fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
         self.lbl_charge_money.place(x=740, y=223)
@@ -834,9 +904,9 @@ class Application:
         self.lbl_charge_page_2_money.place(x=740, y=223)
 
         # TODO : 하드웨어 테스트 이후 지워야할 화면처리
-        self.btn_charge1_back = Button(self.frame_charge_page_1, image=charge_back_btn_image, bd=0, bg="#a8c4b9",
-                                    activebackground='#a8c4b9', command=lambda:self.showFrame(self.frame_charge))
-        self.btn_charge1_back.place(x=57, y=657)
+        self.btn_charge_page1_back = Button(self.frame_charge_page_1, image=charge_back_btn_image, bd=0, bg="#a8c4b9",
+                                    activebackground='#a8c4b9', command=lambda:self.chargeQuit())
+        self.btn_charge_page1_back.place(x=57, y=657)
 
         self.temp_charge1_next_btn = Button(self.frame_charge_page_1, image=charge_next_btn_on_image, bd=0, bg="#a8c4b9",
                                     activebackground='#a8c4b9', command=lambda: self.showFrame(self.frame_charge_page_2))

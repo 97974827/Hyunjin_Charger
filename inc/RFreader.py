@@ -13,7 +13,11 @@ class Reader(CardObserver):
     ISSUED_STATE = False
     LOOKUP_STATE = False
 
-    lookup_flag = "0"
+    # Success / Failed Flag  1/0
+    flag_charge = False
+    flag_issued = False
+    flag_lookup = False
+    flag_init = False
 
     input_money = 0
     bonus = 0
@@ -365,6 +369,7 @@ class Reader(CardObserver):
                                                                     time.sleep(0.25)
                                                                     print("1번지 업데이트 블록 : ", update_binary_block)
                                                                     self.input_money = 0
+                                                                    self.flag_charge = True
                                                                     card.connection.control(SCARD_CTL_CODE(3500),self.BUZZER_BYTE)
 
                                                                 else:
@@ -382,7 +387,10 @@ class Reader(CardObserver):
                                                         # if is_check_sum:
                                                         self.remain_money = int_remain_money
                                                         print("잔액 : ", self.remain_money)
-                                                        self.lookup_flag = "1"
+                                                        if self.remain_money:
+                                                            self.flag_lookup = True
+                                                        else:
+                                                            self.flag_lookup = False
                                                         card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
                                                         # else:
                                                         #     time.sleep(0.25)
