@@ -1,6 +1,6 @@
 from tkinter import *
 from smartcard.CardMonitoring import CardMonitor
-from inc import admin, master, bill, ejector, RFreader, sound, common, AnimatedGif
+from inc import admin, master, bill, ejector, RFreader, sound, common, AnimatedGif, database
 import threading
 import sys
 import platform
@@ -8,22 +8,30 @@ import time
 
 
 class Application:
+    # 메인 투입금액 관련 음성 플래그
+    CHARGE_INIT_FLAG = False
+    ISSUED_INIT_FLAG = False
+    LOOKUP_INIT_FLAG = False
 
-    # 메인 UI 제어 스레드 변수
-    thread_main_ui_control_view = ""
+    # 충전 음성 스레드 (지폐를 투입하여 주세요, 세차 카드를 터치하여 주세요)
+    thread_charge_sound_bill_input = ""                # 지폐 투입 스레드 (충전, 발급 공통사용)
+    count_charge_thread_sound_bill_input = 0           # 지폐 투입 스레드 카운트
+    bool_charge_thread_sound_bill_input_state = False  # 지폐 투입 스레드 플래그
 
-    # 충전 음성 스레드
-    thread_sound_bill_input = ""          # 지폐 투입 스레드
-    count_thread_sound_bill_input = 0     # 지폐 투입 스레드 카운트
-    bool_thread_sound_bill_input = False  # 지폐 투입 스레드 플래그
+    thread_charge_sound_card_touch = ""                # 세차 카드 터치 스레드
+    count_charge_sound_card_touch = 0                  # 세차 카드 터치 스레드 카운트
+    bool_charge_sound_card_touch_state = False         # 세차 카드 터치 스레드 플래그
 
-
+    # 잔액 조회 세차카드 터치 음성 스레드
+    thread_lookup_sound_card_touch = ""
+    count_lookup_thread_sound_card_touch = 0
+    bool_lookup_thread_sound_card_touch_state = False
 
     main_input_money = 0             # 현재 투입금액
     main_input_bonus = 0             # 투입금액에 따른 보너스
     main_total_money = 0             # 투입금액 + 보너스
 
-    main_min_issued_money = 1000
+    main_min_issued_money = 1000     # 카드발급 최소금액
 
     count_bill_input_sound = 0       # 지폐를 투입하여 주세요 음성 카운트
 
@@ -96,8 +104,9 @@ class Application:
     reader_class = None
     sound_class = None
     common_class = None
+    db_class = None
 
-    # TODO : 임시 방편 admin, master / 추후 모듈 나눠서 수정
+    # TODO : admin, master / 추후 모듈 나눠서 수정
     # Card Init Page
     background_card_init = ""
     btn_hide_login = ""          # 히등 로그인 버튼
@@ -209,16 +218,14 @@ class Application:
     btn_master_exit = ""
     # TODO : admin, master 끝
 
-    def mainLabelVisible(self, second=3.0):
+    def mainLabelVisible(self, second=1.0):
         self.common_class.toggleLabel(self.lbl_main_use, self.lbl_main_use_place)
-
-        if self.main_input_money > 0:
-            if self.sound_class.getBusySound():
-                self.sound_class.stopSound()
-
-            self.sound_class.playSound("./msgs/msg025.wav")
-
         main_label_thread = threading.Timer(second, self.mainLabelVisible)
+
+        if self.main_input_money > 0 and not self.CHARGE_INIT_FLAG and not self.LOOKUP_INIT_FLAG and not self.ISSUED_INIT_FLAG:
+            if not self.sound_class.getBusySound():
+                self.sound_class.playSound("./msgs/msg025.wav")   # 음성 재생중이 아니면 투입금액이 있습니다 재생
+
         main_label_thread.daemon = True
         main_label_thread.start()
 
@@ -227,6 +234,7 @@ class Application:
         if not self.sound_class.getBusySound():
             self.sound_class.playSound("./msgs/msg003.wav")
 
+    # 관리자 인증
     def adminAuthSuccess(self, password):
         if password == "1234":
             self.showFrame(self.frame_admin)
@@ -235,6 +243,12 @@ class Application:
         else:
             msg = "잘못된 비밀번호 입니다."
             self.common_class.showMsgInfo(msg)
+
+    # 관리자 페이지 이동
+    def showAdminPage(self):
+        # self.entry_admin_bonus1 =
+        self.adminAuthSuccess(self.entry_login.get())
+
 
     # 프레임 전환
     def showFrame(self, frame):
@@ -250,6 +264,7 @@ class Application:
         self.btn_charge.config(state="active")
         self.btn_issued.config(state="active")
         self.btn_lookup.config(state="active")
+        self.showFrame(self.frame_main)
 
         if self.sound_class.getBusySound():
             self.sound_class.stopSound()
@@ -258,8 +273,6 @@ class Application:
         self.reader_class.ISSUED_STATE = False
         self.reader_class.LOOKUP_STATE = True
         self.reader_class.INIT_STATE = False
-
-        self.showFrame(self.frame_main)
 
     # 메인 버튼 이미지 변경
     def getMainButtonImage(self, value):
@@ -289,6 +302,7 @@ class Application:
         self.btn_charge.config(state="disabled")
         self.btn_issued.config(state="disabled")
         self.btn_lookup.config(state="disabled")
+        self.btn_charge_next_gif.config(state="disabled")
 
         # 음성 재생중 일때 중지
         if self.sound_class.getBusySound():
@@ -301,16 +315,21 @@ class Application:
         self.reader_class.ISSUED_STATE = False
         self.reader_class.LOOKUP_STATE = True
 
-        self.bool_thread_sound_bill_input = False  # 지폐 투입 음성스레드 ON
+        self.CHARGE_INIT_FLAG = True  # 투입금액 관련 음성 플래그 ON
+
+        self.count_charge_thread_sound_bill_input = 0           # 지폐 투입 음성 스레드 카운트 초기화
+        self.bool_charge_thread_sound_bill_input_state = False  # 지폐 투입 음성스레드 ON
+
+        self.count_charge_sound_card_touch = 0                  # 세차 카드 터치 음성 스레드 카운트 초기화
+        self.bool_charge_sound_card_touch_state = False         # 세차 카드 터치 음성 스레드 ON
 
         self.showFrame(self.frame_charge)
-        self.viewInputMoneySoundThread(3)
+        self.inputMoneySoundThread(0, 3)
 
     # 충전 페이지 진입 후 - "지폐를 투입하여 주세요" 음성 스레드
-    def viewInputMoneySoundThread(self, second=3):
+    def inputMoneySoundThread(self, count=0, second=3.0):
         # ON 상태일때 종료
-        if self.bool_thread_sound_bill_input:
-            print("지폐 투입 음성 스레드 : ", self.bool_thread_sound_bill_input)
+        if self.bool_charge_thread_sound_bill_input_state:
             return
 
         # 음성 재생중이 아니라면
@@ -320,26 +339,85 @@ class Application:
             else:
                 self.sound_class.playSound("./msgs/msg008.wav")  # 지폐를 투입하여 주세요
 
+        count += 1
+        self.count_charge_thread_sound_bill_input += 1
 
-        # sound_count += 1
-        self.count_bill_input_sound += 1
-        print(self.count_bill_input_sound)
-        if self.count_bill_input_sound >= 5:
+        # 일정 시간 지나면
+        if self.count_charge_thread_sound_bill_input >= 20:
+            # 지폐 투입 플래그 OFF
+            self.bool_charge_thread_sound_bill_input_state = True
+
             if self.sound_class.getBusySound():
                 self.sound_class.stopSound()
 
-            self.bool_thread_sound_bill_input = True
             self.sound_class.playSound("./msgs/msg020.wav")      # 일정 시간동안 지폐투입 하지않아 메인화면 이동합니다
-
             self.showFrame(self.frame_main)
-            self.resetMainView()
 
-            self.count_bill_input_sound = 0         # 스레드 카운트 초기화
-            self.thread_sound_bill_input.cancel()   # 지폐 투입 스레드 취소
+            self.btn_charge.config(state="active")
+            self.btn_issued.config(state="active")
+            self.btn_lookup.config(state="active")
 
-        self.thread_sound_bill_input = threading.Timer(second, self.viewInputMoneySoundThread)
-        self.thread_sound_bill_input.daemon = True
-        self.thread_sound_bill_input.start()
+            self.reader_class.CHARGE_STATE = False
+            self.reader_class.ISSUED_STATE = False
+            self.reader_class.LOOKUP_STATE = True
+
+            self.thread_charge_sound_bill_input.cancel()   # 지폐 투입 스레드 취소
+
+        self.thread_charge_sound_bill_input = threading.Timer(second, self.inputMoneySoundThread, [count])
+        self.thread_charge_sound_bill_input.daemon = True
+        self.thread_charge_sound_bill_input.start()
+
+    # 충전 페이지 - (다음 gif 버튼에 핸들링)
+    def chargeNextOnHanding(self):
+        if self.sound_class.getBusySound():
+            self.sound_class.stopSound()
+
+        # 지폐 투입 스레드 중지 flow
+        self.count_charge_thread_sound_bill_input = 0
+        self.bool_charge_thread_sound_bill_input_state = True
+
+        if self.thread_charge_sound_bill_input:
+            self.thread_charge_sound_bill_input.cancel()
+
+        self.showFrame(self.frame_charge_page_1)    # 세차 카드 터치 프레임 이동
+        self.chargeCardTouchSoundThread(0, 3)     # 세차 카드 터치 음성 스레드 시작
+
+    # 충전 페이지 - 세차카드 터치 음성 스레드
+    def chargeCardTouchSoundThread(self, count=0, second=3.0):
+        # ON 상태일때 종료
+        if self.bool_charge_sound_card_touch_state:
+            return
+
+        # 음성 재생중이 아니라면
+        if not self.sound_class.getBusySound():
+            self.sound_class.playSound("./msgs/msg010.wav")
+
+        count += 1
+        self.count_charge_sound_card_touch += 1
+
+        # 일정 시간 지나면
+        if self.count_charge_sound_card_touch >= 20:
+            # 지폐 투입 플래그 OFF
+            self.bool_charge_sound_card_touch_state = True
+            if self.sound_class.getBusySound():
+                self.sound_class.stopSound()
+
+            self.sound_class.playSound("./msgs/msg021.wav")  # 일정 시간동안 다음 단계를 진행하지않아 메인화면 이동합니다
+            self.showFrame(self.frame_main)
+
+            self.btn_charge.config(state="active")
+            self.btn_issued.config(state="active")
+            self.btn_lookup.config(state="active")
+
+            self.reader_class.CHARGE_STATE = False
+            self.reader_class.ISSUED_STATE = False
+            self.reader_class.LOOKUP_STATE = True
+
+            self.thread_charge_sound_bill_input.cancel()  # 지폐 투입 스레드 취소
+
+        self.thread_lookup_sound_card_touch = threading.Timer(second, self.chargeCardTouchSoundThread, [count])
+        self.thread_lookup_sound_card_touch.daemon = True
+        self.thread_lookup_sound_card_touch.start()
 
     # 충전 종료
     def chargeQuit(self):
@@ -352,12 +430,18 @@ class Application:
         self.reader_class.LOOKUP_STATE = True
         self.reader_class.INIT_STATE = False
 
+        self.CHARGE_INIT_FLAG = False  # 투입금액 관련 음성 플래그 OFF
+
         if self.sound_class.getBusySound():
             self.sound_class.stopSound()
 
         self.showFrame(self.frame_main)
 
-        self.thread_sound_bill_input.cancel()
+        # 충전 스레드 살아있으면 중지
+        if self.thread_charge_sound_bill_input:
+            self.thread_charge_sound_bill_input.cancel()
+        if self.thread_lookup_sound_card_touch:
+            self.thread_lookup_sound_card_touch.cancel()
 
     # 발급 버튼 눌렀을때 이벤트
     def startIssuedButton(self):
@@ -374,16 +458,182 @@ class Application:
         self.reader_class.ISSUED_STATE = True
         self.reader_class.LOOKUP_STATE = False
 
+        self.ISSUED_INIT_FLAG = True  # 투입금액 관련 음성 플래그 ON
+
+        self.count_charge_thread_sound_bill_input = 0  # 지폐 투입 음성 스레드 카운트 초기화
+        self.bool_charge_thread_sound_bill_input_state = False  # 지폐 투입 음성스레드 ON
+
         self.showFrame(self.frame_issued)
+        self.inputMoneySoundThread(0, 3.5)
+
+    # 발급 - 다음 버튼 눌렀을때
+    def issuedNextButtonHanding(self):
+        # 지폐 투입 음성 스레드 초기화
+        self.count_charge_thread_sound_bill_input = 0
+        self.bool_charge_thread_sound_bill_input_state = True
+
+        # 다음 버튼 비활성화
+        self.btn_issued_next_gif.config(state="disabled")
+        self.issuedNextButtonAnimateStop()
+
+        # 지폐 투입 스레드 살아있으면 중지
+        if self.thread_charge_sound_bill_input:
+            self.thread_charge_sound_bill_input.cancel()
+
+        if not self.ejector_class.EJECTOR_CONNECT:  # 배출기 연결 OFF면 활성화
+            self.ejector_class.ejectorSendData("hi")
+
+        # 배출기 연결 ON 이면 활성화
+        if self.ejector_class.EJECTOR_CONNECT:
+            self.ejector_class.ejectorSendData("enable")
+
+            # 배출기 상태가 활성화 상태면
+            if self.ejector_class.EJECTOR_STATE:
+                self.ejector_class.ejectorSendData("output")  # 카드 배출
+                self.showFrame(self.frame_main)
+
+                # 배출기 상태 검사
+                ejector_state = self.ejector_class.ejectorSendData("state")
+                print("배출기 상태 : ", ejector_state)
+                if ejector_state == 2:  # 배출 동작중일때
+                    self.sound_class.playSound("./msgs/msg014.wav")
+                elif ejector_state == 5:  # 1장 배출후 비정상 종료상태 or 카드 없음
+                    self.sound_class.playSound("./msgs/msg017.wav")
+                    self.btn_charge.config(state="active")
+                    self.btn_issued.config(state="active")
+                    self.btn_lookup.config(state="active")
+
+                    self.ISSUED_INIT_FLAG = False  # 투입금액 관련 플래그 OFF
+                    self.reader_class.LOOKUP_STATE = True
+                    self.reader_class.ISSUED_STATE = False
+                    self.showFrame(self.frame_main)
+                    return
+                else:
+                    self.sound_class.playSound("./msgs/msg017.wav")
+                    self.btn_charge.config(state="active")
+                    self.btn_issued.config(state="active")
+                    self.btn_lookup.config(state="active")
+                    self.ejector_class.ejectorSendData("init")  # 배출기 초기화
+                    self.ISSUED_INIT_FLAG = False  # 투입금액 관련 플래그 OFF
+                    self.reader_class.LOOKUP_STATE = True
+                    self.reader_class.ISSUED_STATE = False
+                    self.showFrame(self.frame_main)
+                    return
+
+                # 카드 배출 중일때 배출기 상태 다시 검사하여 카드가 나온상황이면 남은 금액 카드 충전
+                try:
+                    ejector_state = self.ejector_class.ejectorSendData("state")
+                    print("배출기 상태 : ", ejector_state)
+                    if ejector_state == 4 or ejector_state == 5 or ejector_state == 2:
+                        # self.bonus = int(self.get_bonus(self.input_money))
+                        # self.rf_class.bonus = int(self.get_bonus(self.input_money))
+
+                        # card_price = int(self.config.get_config("card_price"))  # 카드 가격
+                        # temp = card_price - self.bonus  # 카드 가격에서 보너스를 뺌
+                        # total_use = 0
+
+                        self.reader_class.input_money = self.main_input_money - self.main_min_issued_money
+
+                        # if self.main_input_money > 0:  # 카드가격이 남았다면
+                        #     # input_money = self.input_money - temp
+                        #     # self.use_bonus = self.bonus
+                        #     self.input_money -= temp
+                        #     self.rf_class.input_money -= temp
+                        #     self.rf_class.bonus = 0
+                        #     self.bonus = 0
+                        # else:
+                        #     self.bonus -= card_price
+                        #     self.use_bonus = card_price
+                        #     self.rf_class.bonus -= card_price
+                        #     input_money = self.input_money
+
+                        # dic = OrderedDict()
+                        #
+                        # dic['total_mny'] = str(total_use)
+                        # dic['charge_mny'] = "0"
+                        # dic['bonus_mny'] = "0"
+                        # dic['card_price'] = str(card_price)
+                        # dic['card_count'] = "1"
+                        #
+                        # self.config.set_total_table(dic)
+
+                        self.ejector_class.ejectorSendData("disable")
+                        self.btn_charge.config(state="active")
+                        self.btn_issued.config(state="active")
+                        self.btn_lookup.config(state="active")
+
+                        # total_view_mny = self.input_money + self.bonus
+
+                        # total_view_mny = self.my.number_format(total_view_mny)
+                        # input_money = self.my.number_format(input_money)
+
+                        self.changeMoneyView()
+
+                        # 금액에 따른 플래그 처리
+                        if self.reader_class.input_money > 0:
+                            self.reader_class.ISSUED_STATE = True
+                            # self.rf_class.ISSUED_ENABLE = False
+                        else:
+                            self.reader_class.ISSUED_STATE = False
+                            # self.reader_class.ISSUED_ENABLE = True
+                            self.reader_class.LOOKUP_STATE = True
+
+                        self.ISSUED_INIT_FLAG = False
+                    else:
+                        self.sound_class.playSound("./msgs/msg017.wav")
+                        self.btn_charge.config(state="active")
+                        self.btn_issued.config(state="active")
+                        self.btn_lookup.config(state="active")
+                        self.ejector_class.ejectorSendData("init")
+                        self.showFrame(self.frame_main)
+                        return
+
+                except Exception as error:
+                    print("Issued Card Error : " + str(error))
+
+            # 배출기 상태 OFF 일때
+            else:
+                self.sound_class.playSound("./msgs/msg017.wav")
+                self.btn_charge.config(state="active")
+                self.btn_issued.config(state="active")
+                self.btn_lookup.config(state="active")
+
+                self.ISSUED_INIT_FLAG = False  # 투입금액 관련 플래그 OFF
+                self.reader_class.LOOKUP_STATE = True
+                self.reader_class.ISSUED_STATE = False
+                self.showFrame(self.frame_main)
+                return
+
+    # 발급 종료
+    def issuedQuit(self):
+        self.btn_charge.config(state="active")
+        self.btn_issued.config(state="active")
+        self.btn_lookup.config(state="active")
+
+        self.reader_class.CHARGE_STATE = False
+        self.reader_class.ISSUED_STATE = False
+        self.reader_class.LOOKUP_STATE = True
+
+        self.ISSUED_INIT_FLAG = False  # 투입금액 관련 음성 플래그 OFF
+
+        if self.sound_class.getBusySound():
+            self.sound_class.stopSound()
+
+        if self.thread_charge_sound_bill_input:
+            self.thread_charge_sound_bill_input.cancel()
+
+        self.showFrame(self.frame_main)
 
     # 조회 버튼 눌렀을때 이벤트
     def startLookupButton(self):
         self.btn_charge.config(state="disabled")
         self.btn_issued.config(state="disabled")
         self.btn_lookup.config(state="disabled")
+        self.showFrame(self.frame_lookup)
 
         if self.sound_class.getBusySound():
             self.sound_class.stopSound()
+
         self.sound_class.playSound("./msgs/msg007.wav")
 
         # Flag State Init
@@ -391,25 +641,76 @@ class Application:
         self.reader_class.ISSUED_STATE = False
         self.reader_class.LOOKUP_STATE = True
 
-        self.bool_thread_lookup_sound_state = True
+        self.LOOKUP_INIT_FLAG = True  # 투입금액 관련 음성 플래그 ON
 
-        self.showFrame(self.frame_lookup)
+        # self.bool_thread_lookup_sound_state = True
+        # 잔액 조회 음성 플래그 ON, 카운트 초기화
+        self.bool_lookup_thread_sound_card_touch_state = False
+        self.count_lookup_thread_sound_card_touch = 0
+
+        # 잔액조회 세차카드 터치 음성스레드
+        self.lookupCardTouchSoundThread(0, 3)
+
+    # 잔액조회 세차 카드 터치해주세요 음성 스레드
+    def lookupCardTouchSoundThread(self, count=0, second=3.0):
+        if self.bool_lookup_thread_sound_card_touch_state:  # 카드 터치 플래그 검사
+            return
+
+        # 음성 재생중이 아니면 울리기
+        if not self.sound_class.getBusySound():
+            self.sound_class.playSound("./msgs/msg010.wav")
+
+        count += 1
+        self.count_lookup_thread_sound_card_touch += 1
+
+        # 일정시간 이후 플래그 OFF , 스레드 중지
+        if self.count_lookup_thread_sound_card_touch >= 20:
+            self.bool_lookup_thread_sound_card_touch_state = True
+            if self.sound_class.getBusySound():
+                self.sound_class.stopSound()
+
+            self.sound_class.playSound("./msgs/msg021.wav")  # 메인 이동 음성
+            self.showFrame(self.frame_main)
+
+            self.btn_charge.config(state="active")
+            self.btn_issued.config(state="active")
+            self.btn_lookup.config(state="active")
+
+            # 카드 터치 스레드 취소
+            self.thread_lookup_sound_card_touch.cancel()
+
+        self.thread_lookup_sound_card_touch = threading.Timer(second, self.lookupCardTouchSoundThread, [count])
+        self.thread_lookup_sound_card_touch.daemon = True
+        self.thread_lookup_sound_card_touch.start()
 
     # 잔액조회 종료
-    def endLookup(self):
+    def lookupQuit(self):
+        # 잔액조회 금액 뷰 초기화
+        self.lbl_lookup_money.config(text="0 원")
+        self.btn_charge.config(state="active")
+        self.btn_issued.config(state="active")
+        self.btn_lookup.config(state="active")
+        self.showFrame(self.frame_main)
+
+        self.reader_class.CHARGE_STATE = False
+        self.reader_class.ISSUED_STATE = False
+        self.reader_class.LOOKUP_STATE = True
+
+        self.LOOKUP_INIT_FLAG = False  # 투입금액 관련 음성 플래그 OFF
+
+        self.bool_lookup_thread_sound_card_touch_state = True  # 잔액 조회 음성 OFF
 
         # 음성 스레드 살아있으면 종료
         if self.sound_class.getBusySound():
             self.sound_class.stopSound()
 
-        # 잔액조회 스레드 살아있으면 종료
-        # if self.bool_thread_lookup_sound_state:
-        #     self.thread_main_ui_control_view.cancel()
-
-        self.resetMainView()
+        # 잔액조회 음성 세차카드 플래그 OFF 이후 중지
+        if self.thread_lookup_sound_card_touch:
+            self.thread_lookup_sound_card_touch.cancel()
 
     # 한 사이클 수행 후 금액 초기화
     def initViewMoney(self):
+        # 투입금액, 보너스, 토탈금액 초기화
         self.main_input_money = 0
         self.main_input_bonus = 0
         self.main_total_money = 0
@@ -418,6 +719,7 @@ class Application:
         self.reader_class.input_money = 0
         self.reader_class.input_bonus = 0
         self.reader_class.total_money = 0
+        self.changeMoneyView()
 
     # 메인 UI 제어 스레드 - 충전, 발급, 조회, 초기화 모두 해당
     # Main UI control thread - for charge, issue, lookup, initialization
@@ -431,9 +733,12 @@ class Application:
             self.reader_class.CHARGE_STATE = False
             self.reader_class.ISSUED_STATE = False
 
-            self.lbl_charge_page_2_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.reader_class.total_money))))
-            self.lbl_charge_page_2_money.place(x=570, y=223)
+            self.CHARGE_INIT_FLAG = False  #  투입금액 관련 음성 플래그 OFF
 
+            self.main_total_money = self.reader_class.total_money
+            self.lbl_charge_page_2_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.main_total_money))))
+
+            # 충전 완료 프레임 이동
             self.showFrame(self.frame_charge_page_2)
 
             if self.sound_class.getBusySound():
@@ -442,19 +747,28 @@ class Application:
             self.sound_class.playSound("./msgs/msg013.wav")  # 충전 완료 음성
             self.reader_class.flag_charge = False  # 충전 플래그 OFF
 
+            self.bool_charge_sound_card_touch_state = True
+            self.bool_charge_thread_sound_bill_input_state = True
+
+            # 충전 음성 스레드 살아있으면 중지 (지폐 투입, 카드 터치)
+            if self.thread_charge_sound_bill_input:
+                self.thread_charge_sound_bill_input.cancel()
+            if self.thread_lookup_sound_card_touch:
+                self.thread_lookup_sound_card_touch.cancel()
+
             time.sleep(2.5)
             self.initViewMoney()
             self.resetMainView()
 
         # 조회 여부 검사
         elif self.reader_class.flag_lookup:
-
             self.reader_class.CHARGE_STATE = False
             self.reader_class.ISSUED_STATE = False
             self.reader_class.INIT_STATE = False
 
+            self.LOOKUP_INIT_FLAG = False  # 투입금액 관련 음성 플래그 OFF
+
             self.lbl_lookup_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.reader_class.remain_money))))
-            self.lbl_lookup_money.place(x=570, y=223)
             self.showFrame(self.frame_lookup)
 
             if self.sound_class.getBusySound():
@@ -463,43 +777,35 @@ class Application:
             self.sound_class.playSound("./msgs/msg018.wav")  # 잔액 조회 완료 음성
             self.reader_class.flag_lookup = False   # 잔액 플래그 OFF
 
+            # 잔액조회 음성 중지
+            if self.thread_lookup_sound_card_touch:
+                self.thread_lookup_sound_card_touch.cancel()
+
             time.sleep(2.5)
             self.initViewMoney()
-            self.endLookup()  # 뒤로가기 버튼이벤트와 카드 터치 이후 이벤트
+            self.lookupQuit()  # 뒤로가기 버튼이벤트와 카드 터치 이후 이벤트
 
-        self.thread_main_ui_control_view = threading.Timer(second, self.threadUIMainView)
-        self.thread_main_ui_control_view.daemon = True
-        self.thread_main_ui_control_view.start()
+        thread_main_ui_control_view = threading.Timer(second, self.threadUIMainView)
+        thread_main_ui_control_view.daemon = True
+        thread_main_ui_control_view.start()
 
     # 모든 뷰 금액 변경
-    def threadChangeMoneyView(self, second=1.0):
+    def changeMoneyView(self):
         try:
-            if self.main_input_money > 0:
-                self.lbl_charge_money.config(text="{:,} 원".format(self.main_input_money))
-                self.lbl_charge_page_1_money.config(text="{:,} 원".format(self.main_input_money))
-                self.lbl_charge_page_2_money.config(text="{:,} 원".format(self.main_input_money))
-                self.lbl_issued_money.config(text="{:,} 원".format(self.main_input_money))
-                self.lbl_issued_card_issued_money.config(text="{:,} 원".format(self.main_min_issued_money))
+            self.lbl_charge_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.main_input_money))))
+            self.lbl_charge_page_1_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.main_input_money))))
+            self.lbl_charge_page_2_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.main_input_money))))
+            self.lbl_issued_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.main_input_money))))
+            self.lbl_issued_card_issued_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.main_min_issued_money))))
 
-                self.lbl_charge_money.place(x=570, y=223)
-                self.lbl_charge_page_1_money.place(x=570, y=223)
-                self.lbl_charge_page_2_money.place(x=570, y=223)
-                self.lbl_issued_money.place(x=570, y=223)
-                self.lbl_issued_card_issued_money.place(x=765, y=298)
-
-                if self.main_input_money > 0:
-                    lbl_font_color = "red"
-                else:
-                    lbl_font_color = "black"
-                self.lbl_main_money.config(text="투입금액       {} 원".format(str(self.main_input_money)), fg=lbl_font_color)
-                self.lbl_main_money.place(x=330, y=705)
+            if self.main_input_money == "0" or self.main_input_money == 0:
+                lbl_font_color = "black"
+            else:
+                lbl_font_color = "red"
+            self.lbl_main_money.config(text="투입금액       {} 원".format(self.common_class.stringNumberFormat(str(self.main_input_money))), fg=lbl_font_color)
 
         except Exception as error:
             print("threadChangeMoneyView Error : " + str(error))
-
-        ui_money_thread = threading.Timer(second, self.threadChangeMoneyView)
-        ui_money_thread.daemon = True
-        ui_money_thread.start()
 
     # second is defalut config -> not typeError
     # 지폐인식 스레드
@@ -507,29 +813,94 @@ class Application:
         bill_status = self.bill_class.billSendData("getActiveStatus")
         if bill_status == 1 or bill_status == 11:
             bill_data = self.bill_class.billSendData("billdata")
+            # print(bill_data)
 
+            # 투입금액 있으면
             if type(bill_data) == int and bill_data > 0:
+                # 투입금액 처리
                 self.main_input_money += bill_data
                 self.reader_class.input_money += bill_data
-                # print("현재 투입금액 : ", self.main_input_money)
-            self.bill_class.billSendData("insertE")
+                self.changeMoneyView()  # 금액 뷰
+
+                # 보너스 처리 해야함
+
+                if self.sound_class.getBusySound():
+                    self.sound_class.stopSound()
+                self.sound_class.playSound("./msgs/msg022.wav")  # 지폐가 투입되었습니다
+
+                self.bill_class.billSendData("insertE")
 
         bill_thread = threading.Timer(second, self.threadBillReader)
         bill_thread.daemon = True
         bill_thread.start()
 
-    # 지폐 들어왔나 확인 음성 스레드
-    def threadConfirmBillSound(self):
-        pass
+    # 충전 다음 버튼 움직이기
+    def nextChargeButtonOnAnimate(self):
+        self.btn_charge_next_gif.place(x=770, y=625)
+        self.btn_charge_next_gif.stop = False
+        self.btn_charge_next_gif.start()
 
+    # 충전 다음 버튼 멈추기
+    def nextChargeButtonStopAnimate(self):
+        self.btn_charge_next_gif.stop = True
+        self.btn_charge_next_gif.place_forget()
+
+    # 충전 다음 버튼 움직이는지 확인하기
+    def isNextChargeButtonAnimate(self):
+        return self.btn_charge_next_gif.stop
+
+    # 발급 다음 버튼 움직이기
+    def issuedNextButtonAnimate(self):
+        self.btn_issued_next_gif.place(x=770, y=625)
+        self.btn_issued_next_gif.stop = False
+        self.btn_issued_next_gif.start()
+
+    # 발급 다음 버튼 멈추기
+    def issuedNextButtonAnimateStop(self):
+        self.btn_issued_next_gif.stop = True
+        self.btn_issued_next_gif.place_forget()
+
+    # 발급 다음 버튼 움직이는지 확인하기
+    def isNextIssuedButtonAnimate(self):
+        return self.btn_issued_next_gif.stop
+
+    # 지폐가 들어오면 다음 버튼 변화 스레드
+    def billCheckChangeNextButtonThread(self, second=0.3):
+        try:
+            # 투입금액이 있다면
+            if self.main_input_money > 0:
+                self.btn_charge_next_gif.config(state="active")
+
+                # 충전 버튼 움직이나
+                if self.isNextChargeButtonAnimate():
+                    self.nextChargeButtonOnAnimate()
+
+                # 투입금액이 카드 발급 최소금액 보다 크면 다음 버튼 활성화
+                if self.main_input_money >= self.main_min_issued_money:
+                    if self.isNextIssuedButtonAnimate():
+                        self.issuedNextButtonAnimate()
+                        self.btn_issued_next_gif.config(state="active")
+            else:
+                if not self.isNextIssuedButtonAnimate():
+                    self.issuedNextButtonAnimateStop()
+
+                # 움직이지 않으면
+                if not self.isNextChargeButtonAnimate():
+                    self.nextChargeButtonStopAnimate()
+
+                self.changeMoneyView()  # 금액 뷰
+        except Exception as error:
+            print("billCheck ChangeNextButtonThread Error : " + str(error))
+
+        thread_bill_check_change_button = threading.Timer(second, self.billCheckChangeNextButtonThread)
+        thread_bill_check_change_button.daemon = True
+        thread_bill_check_change_button.start()
+
+    # 프로그램 시작
     def initialiZation(self):
         # Init Bill Start
         self.bill_class.billSendData("insertE")
-        self.mainLabelVisible(3.0)
-
-        # BILL Thread Start
-        # if 'Linux' in platform.system():
-        self.threadBillReader(1.0)
+        self.mainLabelVisible(4)
 
         # RF reader Thread Start
         cardmonitor = CardMonitor()
@@ -537,9 +908,13 @@ class Application:
         cardmonitor.addObserver(self.reader_class)
         self.reader_class.LOOKUP_STATE = True
 
+        # BILL Thread Start
+        # if 'Linux' in platform.system():
+        self.threadBillReader(1.0)
+        self.billCheckChangeNextButtonThread(0.5)
+
         # 메인 금액 뷰 실시간 조회 스레드
-        self.threadChangeMoneyView(1)   # 화면 금액 변경 스레드
-        self.threadUIMainView(1)        # 충전, 조회 플래그 검사 후
+        self.threadUIMainView(1.0)        # 충전, 조회 플래그 검사 후
 
     # UI Initialize
     def __init__(self):
@@ -625,17 +1000,18 @@ class Application:
         self.background_card_init = Label(self.frame_card_init, image=main_frame_image).pack()
 
         # Admin Login Page
-        self.btn_hide_login = Button(self.frame_main, bd=0, bg="#a8c4b9", width=30, height=4, activebackground='#a8c4b9'
-                                     , command=lambda: self.showFrame(self.frame_login))
+        self.btn_hide_login = Button(self.frame_main, relief="solid", bd="0", bg="#a8c4b9", width=30, height=4,
+                                     activebackground='#a8c4b9', highlightthickness=4, highlightcolor="#a8c4b9",
+                                     highlightbackground="#a8c4b9", command=lambda: self.showFrame(self.frame_login))
         self.btn_hide_login.place(x=20, y=0)
 
         self.entry_login = Entry(self.frame_login, show="*")
         self.entry_login.delete(0, END)  # 기입창 내용지우기
         self.entry_login.place(x=387, y=407)
-        self.btn_login_config = Button(self.frame_login, text="확인", width=6,
-                                       command=lambda: self.adminAuthSuccess(self.entry_login.get()))
+        self.btn_login_config = Button(self.frame_login, text="확인", width=5,
+                                       command=lambda: self.showAdminPage())
         self.btn_login_config.place(x=540, y=403)
-        self.btn_login_cancel = Button(self.frame_login, text="취소", width=6,
+        self.btn_login_cancel = Button(self.frame_login, text="취소", width=5,
                                        command=lambda: self.showFrame(self.frame_main))
         self.btn_login_cancel.place(x=600, y=403)
 
@@ -732,15 +1108,15 @@ class Application:
 
         # Card_Init_Page
         self.lbl_init_use = Label(self.frame_card_init, text="매장 ID 입력 상태 : X", font=("", 30, "bold"), anchor="e",
-                                  bg="#a8c4b9")
-        self.lbl_init_use.place(x=355, y=50)
+                                  width=30, bg="#a8c4b9")
+        self.lbl_init_use.place(x=0, y=50)
         self.lbl_init_shop_id = Label(self.frame_card_init, text="저장될 매장 ID : 0000", font=("", 30, "bold"), anchor="e",
-                                      bg="#a8c4b9")
-        self.lbl_init_shop_id.place(x=340, y=155)
-        self.btn_init_start = Button(self.frame_card_init, image=btn_init_start_image, bd=0, bg="#a8c4b9",
+                                      width=30, bg="#a8c4b9")
+        self.lbl_init_shop_id.place(x=0, y=160)
+        self.btn_init_start = Button(self.frame_card_init, image=btn_init_start_image, bd="0", bg="#a8c4b9",
                                      activebackground='#a8c4b9')
         self.btn_init_start.place(x=250, y=235)
-        self.btn_init_cancel = Button(self.frame_card_init, image=btn_init_quit_image, bd=0, bg="#a8c4b9",
+        self.btn_init_cancel = Button(self.frame_card_init, image=btn_init_quit_image, bd="0", bg="#a8c4b9",
                                       activebackground='#a8c4b9',
                                       command=lambda: self.showFrame(self.frame_main))
         self.btn_init_cancel.place(x=550, y=235)
@@ -843,9 +1219,12 @@ class Application:
         self.btn_master_exit.place(x=850, y=650)
 
         # Main Button
-        self.btn_charge = Button(self.frame_main, image=charge_btn_image, bd=0, bg="#a8c4b9", activebackground='#a8c4b9')
-        self.btn_issued = Button(self.frame_main, image=issued_btn_image, bd=0, bg="#a8c4b9", activebackground='#a8c4b9')
-        self.btn_lookup = Button(self.frame_main, image=lookup_btn_image, bd=0, bg="#a8c4b9", activebackground='#a8c4b9')
+        self.btn_charge = Button(self.frame_main, image=charge_btn_image, bd="0", bg="#a8c4b9",
+                                 activebackground='#a8c4b9', highlightthickness=4, highlightcolor="#a8c4b9", anchor="center", highlightbackground="#a8c4b9")
+        self.btn_issued = Button(self.frame_main, image=issued_btn_image, bd="0", bg="#a8c4b9",
+                                 activebackground='#a8c4b9', highlightthickness=4, highlightcolor="#a8c4b9", anchor="center", highlightbackground="#a8c4b9")
+        self.btn_lookup = Button(self.frame_main, image=lookup_btn_image, bd="0", bg="#a8c4b9",
+                                 activebackground='#a8c4b9', highlightthickness=4, highlightcolor="#a8c4b9", anchor="center", highlightbackground="#a8c4b9")
 
         # H/W Module Verification
         if self.bill_class.BILL_CONNECT:
@@ -867,13 +1246,13 @@ class Application:
         self.lbl_main_hello = Label(self.frame_main, text="저희 세차장을 이용해주셔서 감사합니다.", font=("Corier", 20), bg="#a8c4b9")
         self.lbl_main_hello.place(x=60, y=70)
 
-        self.lbl_main_use = Label(self.frame_main, image=main_use_image, bd=0)  # bd=테두리 두께(default:2)
+        self.lbl_main_use = Label(self.frame_main, image=main_use_image, bd="0")  # bd=테두리 두께(default:2)
         self.lbl_main_use.visible = True
         self.lbl_main_use.place(x=280, y=532)
         self.lbl_main_use_place = self.lbl_main_use.place_info()
 
-        self.lbl_main_money = Label(self.frame_main, text="투입금액      0 원", font=("Corier", 30, "bold"), bg="#a8c4b9", anchor="e")
-        self.lbl_main_money.place(x=330, y=705)
+        self.lbl_main_money = Label(self.frame_main, text="투입금액      0 원", font=("Corier", 30, "bold"), width=27, bg="#a8c4b9", anchor="e")
+        self.lbl_main_money.place(x=0, y=700)
 
         # Charge Card Page
         self.gif_charge_image = AnimatedGif.AnimatedGif(self.frame_charge, './images/bill-1.gif', 0.7)
@@ -881,40 +1260,33 @@ class Application:
         self.gif_charge_image.place(x=360, y=360)
         self.gif_charge_image.start()
 
-        self.btn_charge_back = Button(self.frame_charge, image=charge_back_btn_image, bd=0, bg="#a8c4b9",
-                                      activebackground='#a8c4b9', command=lambda:self.chargeQuit())
+        self.btn_charge_back = Button(self.frame_charge, image=charge_back_btn_image, bd="0", bg="#a8c4b9",
+                                      activebackground='#a8c4b9', highlightthickness=4, highlightcolor="#a8c4b9",
+                                      highlightbackground="#a8c4b9", command=lambda:self.chargeQuit())
         self.btn_charge_back.place(x=57, y=657)
-        self.btn_charge_next_on = Button(self.frame_charge, image=charge_next_btn_on_image, bd=0, bg="#a8c4b9",
-                                    activebackground='#a8c4b9', command=lambda:self.showFrame(self.frame_charge_page_1))
-        self.btn_charge_next_on.place(x=833, y=657)    # hidden state 다음 버튼위치
-        # self.btn_charge_next_gif.place(x=777, y=630)  # gif 다음 버튼위치
+        self.btn_charge_next_on = Button(self.frame_charge, image=charge_next_btn_on_image, bd="0", bg="#a8c4b9", state="disabled",
+                                        relief="solid", activebackground="#a8c4b9", highlightthickness=4, highlightcolor="#a8c4b9", anchor="center", highlightbackground="#a8c4b9")
+        self.btn_charge_next_on.place(x=825, y=650)    # hidden state 다음 버튼위치
 
-        # self.btn_charge_next_gif = AnimatedGif.AnimatedGif(self.frame_charge, './images/next_btn_ani.gif', 0.8)
-        # self.btn_charge_next_gif.config(bg="#a8c4b9", activebackground='#a8c4b9')
-        # self.btn_charge_next_gif.place(x=777, y=630)
-        # self.btn_charge_next_gif.start()
+        # 충전 다음 GIF 버튼
+        self.btn_charge_next_gif = AnimatedGif.AnimatedButtonGif(self.frame_charge, './images/next_btn_ani2.gif', 0.7)
+        self.btn_charge_next_gif.config(bg="#a8c4b9", relief="solid", bd="0", activebackground="#a8c4b9", highlightthickness=4,
+                highlightcolor="#a8c4b9", anchor="center", highlightbackground="#a8c4b9", command=lambda: self.chargeNextOnHanding())
 
-        self.lbl_charge_money = Label(self.frame_charge, text="0 원", fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
-        self.lbl_charge_money.place(x=740, y=223)
-        self.lbl_charge_page_1_money = Label(self.frame_charge_page_1, text="0 원", fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
-        self.lbl_charge_page_1_money.place(x=740, y=223)
-        self.lbl_charge_page_1_bonus = Label(self.frame_charge_page_1, text="0 원", fg="#ffffff", bg="#464646", font=("Corier", 12), anchor="e")
-        self.lbl_charge_page_1_bonus.place(x=795, y=298)
-        self.lbl_charge_page_2_money = Label(self.frame_charge_page_2, text="0 원", fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
-        self.lbl_charge_page_2_money.place(x=740, y=223)
+        self.lbl_charge_money = Label(self.frame_charge, text="0 원", fg="#33ffcc", width=11, bg="#454f49", font=("Corier", 40), anchor="e")
+        self.lbl_charge_money.place(x=490, y=215)
+        self.lbl_charge_page_1_money = Label(self.frame_charge_page_1, text="0 원", width=11, fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
+        self.lbl_charge_page_1_money.place(x=490, y=215)
+        self.lbl_charge_page_1_bonus = Label(self.frame_charge_page_1, text="0 원", width=8, fg="#ffffff", bg="#464646", font=("Corier", 12), anchor="e")
+        self.lbl_charge_page_1_bonus.place(x=744, y=295)
+        self.lbl_charge_page_2_money = Label(self.frame_charge_page_2, text="0 원", width=11, fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
+        self.lbl_charge_page_2_money.place(x=490, y=215)
 
-        # TODO : 하드웨어 테스트 이후 지워야할 화면처리
-        self.btn_charge_page1_back = Button(self.frame_charge_page_1, image=charge_back_btn_image, bd=0, bg="#a8c4b9",
-                                    activebackground='#a8c4b9', command=lambda:self.chargeQuit())
+
+        self.btn_charge_page1_back = Button(self.frame_charge_page_1, image=charge_back_btn_image, bd="0", bg="#a8c4b9",
+                                        activebackground='#a8c4b9', highlightthickness=4,
+                                        highlightcolor="#a8c4b9", highlightbackground="#a8c4b9", command=lambda:self.chargeQuit())
         self.btn_charge_page1_back.place(x=57, y=657)
-
-        self.temp_charge1_next_btn = Button(self.frame_charge_page_1, image=charge_next_btn_on_image, bd=0, bg="#a8c4b9",
-                                    activebackground='#a8c4b9', command=lambda: self.showFrame(self.frame_charge_page_2))
-        self.temp_charge1_next_btn.place(x=833, y=657)
-        self.temp_charge2_next_btn = Button(self.frame_charge_page_2, image=charge_next_btn_on_image, bd=0, bg="#a8c4b9",
-                                            activebackground='#a8c4b9', command=lambda: self.showFrame(self.frame_main))
-        self.temp_charge2_next_btn.place(x=833, y=657)
-        # TODO : 끝
 
         # Issued Card Page
         self.gif_issued_image = AnimatedGif.AnimatedGif(self.frame_issued, './images/bill-1.gif', 0.7)
@@ -922,24 +1294,33 @@ class Application:
         self.gif_issued_image.place(x=360, y=360)
         self.gif_issued_image.start()
 
-        self.btn_issued_back = Button(self.frame_issued, image=charge_back_btn_image, bd=0, bg="#a8c4b9",
-                                    activebackground='#a8c4b9', command=lambda:self.resetMainView())
+        self.btn_issued_back = Button(self.frame_issued, image=charge_back_btn_image, bd="0", bg="#a8c4b9",
+                                    activebackground='#a8c4b9', highlightthickness=4, highlightcolor="#a8c4b9",
+                                      highlightbackground="#a8c4b9", command=lambda:self.issuedQuit())
         self.btn_issued_back.place(x=57, y=657)
-        self.btn_issued_next_on = Button(self.frame_issued, image=charge_next_btn_on_image, bd=0, bg="#a8c4b9",
-                                      activebackground='#a8c4b9', command=lambda: self.showFrame(self.frame_main))
-        self.btn_issued_next_on.place(x=833, y=657)
+        self.btn_issued_next_on = Button(self.frame_issued, image=charge_next_btn_on_image, bd="0", bg="#a8c4b9",
+                                       activebackground='#a8c4b9', highlightthickness=4, highlightcolor="#a8c4b9",
+                                       highlightbackground="#a8c4b9", state="disabled")
+        self.btn_issued_next_on.place(x=825, y=650)
 
-        self.lbl_issued_money = Label(self.frame_issued, text="0 원", fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
-        self.lbl_issued_money.place(x=740, y=223)
-        self.lbl_issued_card_issued_money = Label(self.frame_issued, text="0 원", fg="#ffffff", bg="#464646", font=("Corier", 12), anchor="e")
-        self.lbl_issued_card_issued_money.place(x=795, y=298)
+        # 발급 다음 GIF 버튼
+        self.btn_issued_next_gif = AnimatedGif.AnimatedButtonGif(self.frame_issued, './images/next_btn_ani2.gif', 0.7)
+        self.btn_issued_next_gif.config(bg="#a8c4b9", relief="solid", bd="0", activebackground="#a8c4b9",
+                                        highlightthickness=4, highlightcolor="#a8c4b9", anchor="center", highlightbackground="#a8c4b9",
+                                        command=lambda: self.issuedNextButtonHanding())
+
+        self.lbl_issued_money = Label(self.frame_issued, text="0 원", width=11, fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
+        self.lbl_issued_money.place(x=490, y=215)
+        self.lbl_issued_card_issued_money = Label(self.frame_issued, width=8, text="0 원", fg="#ffffff", bg="#464646", font=("Corier", 12), anchor="e")
+        self.lbl_issued_card_issued_money.place(x=744, y=295)
 
         # Lookup Card Page
-        self.btn_lookup_back = Button(self.frame_lookup, image=charge_back_btn_image, bd=0, bg="#a8c4b9",
-                                    activebackground='#a8c4b9', command=lambda:self.endLookup())
+        self.btn_lookup_back = Button(self.frame_lookup, image=charge_back_btn_image, bd="0", bg="#a8c4b9",
+                                      activebackground='#a8c4b9', highlightthickness=4, highlightcolor="#a8c4b9",
+                                      highlightbackground="#a8c4b9", command=lambda:self.lookupQuit())
         self.btn_lookup_back.place(x=57, y=657)
-        self.lbl_lookup_money = Label(self.frame_lookup, text="0 원", fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
-        self.lbl_lookup_money.place(x=740, y=223)
+        self.lbl_lookup_money = Label(self.frame_lookup, text="0 원", fg="#33ffcc", bg="#454f49", font=("Corier", 40), width=11, anchor="e")
+        self.lbl_lookup_money.place(x=490, y=215)
 
         # 시작전 메인 프레임 이미지초기화
         self.showFrame(self.frame_main)

@@ -1,3 +1,4 @@
+# 2020 04 26 업로드
 from smartcard.CardMonitoring import CardObserver, CardMonitor
 from smartcard.System import readers
 from smartcard.scard import SCARD_CTL_CODE
@@ -23,6 +24,7 @@ class Reader(CardObserver):
     bonus = 0
     total_money = 0
     remain_money = 0
+    min_card_issued_money = 0
 
     UID_BYTE = [0xFF, 0xCA, 0x00, 0x00, 0x04]         # 시리얼 번호 바이트
     LOAD_KEY_SELECT = [0xFF, 0x82, 0x00, 0x00, 0x06]  # 로드 키 셀렉트
@@ -54,7 +56,7 @@ class Reader(CardObserver):
     # 0000000021B0 구길광
     # 0350870E930E 대진
 
-    # xor byte
+    # 반전비트 계산
     def getInvertBit(self, arg):
         result = arg ^ 0xFF
         res = hex(result).upper()
@@ -359,23 +361,24 @@ class Reader(CardObserver):
                                                             if set_update_block2 == 144:
                                                                 time.sleep(0.25)
                                                                 print("2번지 업데이트 블록 : ", update_binary_block)
-                                                                # self.input_money = 0  # 투입금액 테스트용
+                                                                # self.input_money = 0   # 투입금액 테스트용
+                                                                self.flag_charge = True  # 충전 성공
                                                                 card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
                                                             else:
                                                                 # TODO : print문 Error log처리
                                                                 print("2번지 충전 실패함")
-
+                                                                self.flag_charge = False  # 충전 실패
                                                                 if set_update_block1 == 144:
                                                                     time.sleep(0.25)
                                                                     print("1번지 업데이트 블록 : ", update_binary_block)
                                                                     self.input_money = 0
-                                                                    self.flag_charge = True
-                                                                    card.connection.control(SCARD_CTL_CODE(3500),self.BUZZER_BYTE)
-
+                                                                    self.flag_charge = True  # 충전 성공
+                                                                    card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
                                                                 else:
                                                                     print("1번지 충전 실패함")
-                                                                    card.connection.control(SCARD_CTL_CODE(3500),self.BUZZER_BYTE)
-                                                                    card.connection.control(SCARD_CTL_CODE(3500),self.BUZZER_BYTE)
+                                                                    self.flag_charge = False  # 충전 실패
+                                                                    card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
+                                                                    card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
                                                         else:
                                                             card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
 
@@ -387,11 +390,17 @@ class Reader(CardObserver):
                                                         # if is_check_sum:
                                                         self.remain_money = int_remain_money
                                                         print("잔액 : ", self.remain_money)
-                                                        if self.remain_money:
-                                                            self.flag_lookup = True
-                                                        else:
-                                                            self.flag_lookup = False
-                                                        card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
+                                                        print(remain_money)
+                                                        self.flag_lookup = True
+                                                        card.connection.control(SCARD_CTL_CODE(3500),self.BUZZER_BYTE)
+                                                        # if self.remain_money:
+                                                        #     self.flag_lookup = True
+                                                        #     card.connection.control(SCARD_CTL_CODE(3500),self.BUZZER_BYTE)
+                                                        # else:
+                                                        #     self.flag_lookup = False
+                                                        #     card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
+                                                        #     card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
+
                                                         # else:
                                                         #     time.sleep(0.25)
                                                         #     update_binary_block = self.setMoneyUpdateBinaryBlock(serial_number, int_remain_money, int_shop_id)
@@ -444,9 +453,9 @@ class Reader(CardObserver):
                                 # Authentication Success
                                 if is_authentication == 144:
                                     # TODO : DB에서 카드 저장번지에 맞춰 바이너리 블록 read / 바이너리 블록값은 16진수 상태
-                                    binary_block_number_1, is_read_block_number, sw2 = card.connection.transmit(self.READ_BINARY_SELECT_ADDRESS1)
+                                    binary_block_number_1, is_read_block_number, sw2 = card.connection.transmit(self.READ_BINARY_SELECT_ADDRESS2)
                                     print("Binary Block 1 : ", binary_block_number_1)
-                                    binary_block_number_2, is_backup_read_block_number, sw2 = card.connection.transmit(self.READ_BINARY_SELECT_ADDRESS2)
+                                    binary_block_number_2, is_backup_read_block_number, sw2 = card.connection.transmit(self.READ_BINARY_SELECT_ADDRESS1)
                                     print("Binary Block 2 : ", binary_block_number_2)
 
                                     # Read Binary Block Success
@@ -457,30 +466,8 @@ class Reader(CardObserver):
                                         shop_id = self.getShopId(binary_block_number_1)
                                         backup_shop_id = self.getShopId(binary_block_number_2)
 
-                                        master_block_value = binary_block_number_1[11]
-                                        master_block_crc = binary_block_number_1[12]
-
-                                        master_backup_block_value = binary_block_number_2[11]
-                                        master_backup_block_crc = binary_block_number_2[12]
-
                                         is_check_sum = self.getCheckSum(serial_number, remain_money, shop_id,
                                                                 binary_block_number_1[4], binary_block_number_1[13])
-
-                                        # checksum 맞지 않을 경우 다른 카드저장번지 검증
-                                        if not is_check_sum:
-                                            remain_money = backup_remain_money
-                                            shop_id = backup_shop_id
-                                            master_block_value = master_backup_block_value
-                                            master_block_crc = master_backup_block_crc
-
-                                            is_check_sum = self.getCheckSum(serial_number, remain_money, shop_id,
-                                                                    binary_block_number_2[4], binary_block_number_2[13])
-
-                                            # 백업저장 번지도 맞지않으면 마스터 검증
-                                            compare_master_crc = self.getMasterCrcValue(serial_number)
-                                            if compare_master_crc == master_block_crc and master_block_value == 11:
-                                                print("This is a master card")
-                                                is_check_sum = True
 
                                         # Nothing Verification Window Test
                                         if 'Windows' in platform.system():
@@ -497,41 +484,46 @@ class Reader(CardObserver):
                                             # TODO : DB에서 매장ID 조회 하여 일치 여부 검사하기
                                             if shop_id:
                                                 # self.CHARGE_STATE = True  # 충전 테스트중
-                                                if self.CHARGE_STATE:
+                                                if self.ISSUED_STATE:
                                                     print("발급충전")
                                                     self.LOOKUP_STATE = False
                                                     self.ISSUED_STATE = False
 
                                                     if self.input_money > 0:
-                                                        self.total_money = self.input_money + self.bonus + int_remain_money
+                                                        print("투입금액 : ", self.input_money)
+
+                                                        self.total_money = self.input_money - self.min_card_issued_money
                                                         update_binary_block = self.setMoneyUpdateBinaryBlock(serial_number, self.total_money, int_shop_id)
 
                                                         # TODO : DB에서 구/신버전 비교값 가져와서 업데이트 블록 설정하기
-                                                        update_block_1, set_update_block1, sw2 = card.connection.transmit(
-                                                            self.UPDATE_BINARY_SELECT_ADDRESS1 + update_binary_block)
-                                                        update_block_2, set_update_block2, sw2 = card.connection.transmit(
-                                                            self.UPDATE_BINARY_SELECT_ADDRESS2 + update_binary_block)
+                                                        update_block_1, set_update_block1, sw2 = card.connection.transmit(self.UPDATE_BINARY_SELECT_ADDRESS1 + update_binary_block)
+                                                        update_block_2, set_update_block2, sw2 = card.connection.transmit(self.UPDATE_BINARY_SELECT_ADDRESS2 + update_binary_block)
 
                                                         if set_update_block2 == 144:
                                                             time.sleep(0.25)
                                                             print("2번지 업데이트 블록 : ", update_binary_block)
-                                                            self.input_money = 0
-                                                            card.connection.control(SCARD_CTL_CODE(3500),self.BUZZER_BYTE)
+                                                            self.flag_charge = True  # 충전 성공
+                                                            card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
                                                         else:
                                                             # TODO : print문 Error log처리
                                                             print("2번지 충전 실패함")
-
+                                                            self.flag_charge = False  # 충전 실패
                                                             if set_update_block1 == 144:
                                                                 time.sleep(0.25)
                                                                 print("1번지 업데이트 블록 : ", update_binary_block)
-                                                                self.input_money = 0
-                                                                card.connection.control(SCARD_CTL_CODE(3500),self.BUZZER_BYTE)
-
+                                                                self.flag_charge = True  # 충전 성공
+                                                                card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
                                                             else:
                                                                 print("1번지 충전 실패함")
-                                                                card.connection.control(SCARD_CTL_CODE(3500),self.BUZZER_BYTE)
-                                                                card.connection.control(SCARD_CTL_CODE(3500),self.BUZZER_BYTE)
-
+                                                                self.flag_charge = False # 충전 실패
+                                                                card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
+                                                                card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)
+                                                    else:
+                                                        self.input_money = self.input_money - self.min_card_issued_money
+                                                        self.CHARGE_STATE = False
+                                                        self.ISSUED_STATE = False
+                                                        self.LOOKUP_STATE = True
+                                                        self.INIT_STATE = False
                                     else:
                                         print("Read Binary block Failed!")
                                         card.connection.control(SCARD_CTL_CODE(3500), self.BUZZER_BYTE)

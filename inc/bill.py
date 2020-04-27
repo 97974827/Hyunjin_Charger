@@ -9,7 +9,8 @@ class Bill:
 
     BILL_PORT = "COM5"
     if 'Linux' in platform.system():
-        BILL_PORT = "/dev/ttyS0/"
+        #BILL_PORT = "/dev/ttyS0"
+        BILL_PORT = "/dev/ttyUSB1"
     BILL_BAUD = "9600"
 
     bill_receive_data = ""

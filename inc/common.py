@@ -36,7 +36,7 @@ class Common:
         # 세 자릿수 마다 콤마 찍기
         for index in range(digit, len(str_number), 3):
             result_str_number += ',' + str_number[index:(index+3)]
-
+        # print(type(mark + result_str_number))
         return mark + result_str_number
 
 
@@ -44,6 +44,5 @@ class Common:
 if __name__ == '__main__':
     pass
     # app = Common()
-    # # app.numberFormat(1000)
     # res = app.stringNumberFormat("100000000")
     # print(res)

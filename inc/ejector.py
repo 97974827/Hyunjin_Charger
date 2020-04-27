@@ -10,7 +10,7 @@ class Ejector:
 
     EJECTOR_PORT = "COM6"
     if 'Linux' in platform.system():
-        EJECTOR_PORT = "/dev/ttyS1"
+        EJECTOR_PORT = "/dev/ttyUSB0"
     EJECTOR_BAUD = "9600"
 
     ejector_receive_data = ""
@@ -78,26 +78,19 @@ class Ejector:
                 trans_data = bytearray([0x24, 0x53, 0x00, 0x00, check_sum])
                 self.ejector_receive_data = self.ejector_serial.readline(self.ejector_serial.write(trans_data))
 
-                # "대기상태"
-                if self.ejector_receive_data == b'$stb':
+                if self.ejector_receive_data == b'$stb':           # "대기상태"
                     self.ejector_receive_data = 1
-                # "배출 동작중"
-                elif self.ejector_receive_data == b'$sonP':
+                elif self.ejector_receive_data == b'$sonP':        # "배출 동작중"
                     self.ejector_receive_data = 2
-                # "배출기 동작 금지 상태"
-                elif self.ejector_receive_data == b'$sth!':
+                elif self.ejector_receive_data == b'$sth!':        # "배출기 동작 금지 상태"
                     self.ejector_receive_data = 3
-                # "1장 배출 후 정상종료 상태"
-                elif self.ejector_receive_data == b'$s\x01o\xe3':
+                elif self.ejector_receive_data == b'$s\x01o\xe3':  # "1장 배출 후 정상종료 상태"
                     self.ejector_receive_data = 4
-                # "1장 배출 후 비정상종료 상태 or 카드 없음"
-                elif self.ejector_receive_data == b'$s\x01n\xe2':
+                elif self.ejector_receive_data == b'$s\x01n\xe2':  # "1장 배출 후 비정상종료 상태 or 카드 없음"
                     self.ejector_receive_data = 5
-                # "1장 배출 후 도둑 감지상태"
-                elif self.ejector_receive_data == b'$s\x01n\xe8':
+                elif self.ejector_receive_data == b'$s\x01n\xe8':  # "1장 배출 후 도둑 감지상태"
                     self.ejector_receive_data = 6
-                # "알수없는 오류"
-                else:
+                else:                                              # "알수없는 오류"
                     self.ejector_receive_data = 7
 
             elif trans_str == "getErr":
@@ -141,7 +134,7 @@ if __name__ == '__main__':
     # app = Ejector()
     # res = app.ejectorSendData("hi")
     # res = app.ejectorSendData("init")
-    # # res = app.ejectorSendData("disable")
-    # # res = app.ejectorSendData("enable")
-    # # res = app.ejectorSendData("output")
+    # res = app.ejectorSendData("disable")
+    # res = app.ejectorSendData("enable")
+    # res = app.ejectorSendData("output")
     # print("res : ", res)
