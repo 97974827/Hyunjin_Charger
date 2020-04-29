@@ -1,4 +1,5 @@
 import tkinter.messagebox
+import re
 
 
 class Common:
@@ -39,10 +40,20 @@ class Common:
         # print(type(mark + result_str_number))
         return mark + result_str_number
 
+    def check_number(self, text):
+        regex = re.compile(r'((-)?\d{1,3}(,\d{3})*(\.\d+)?)')
+
+        search = regex.search(text)
+        if search:
+            print('%s is a number!!' % search.group(1))
+        else:
+            print('%s is not a number!!' % text)
+
 
 # TODO : Test Code
 if __name__ == '__main__':
     pass
-    # app = Common()
+    app = Common()
+    app.check_number("10000000")
     # res = app.stringNumberFormat("100000000")
     # print(res)

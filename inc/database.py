@@ -53,7 +53,7 @@ class Database:
     encrypt = ""       # 암호화 여부  1 / 0
     data_collect_state = ""  # 회원 보너스 사용여부
 
-    # 초기에 불러와야 할것들 - 환경설정, crc 정보저장, 프로그램 버전 업데이트, 공급업체 정보 넣기
+    # TODO : 초기에 불러와야 할것들 - 환경설정, crc 정보저장, 프로그램 버전 업데이트, 공급업체 정보 넣기
     def __init__(self):
         try:
             self.openConnectDB()
@@ -149,6 +149,7 @@ class Database:
     def openConnectDB(self):
         try:
             self.db_connect = pymysql.connect(host=self.MYSQL_HOST, port=self.MYSQL_PORT, user=self.MYSQL_USER, password=self.MYSQL_PW, charset=self.MYSQL_CHARSET, db=self.MYSQL_DB)
+            print("DB Open")
         except Exception as error:
             print("openConnectDB Error : " + str(error))
 
@@ -222,7 +223,7 @@ class Database:
             with self.db_connect.cursor(pymysql.cursors.DictCursor) as db_cursors:  # 커서 가져오기
                 # 환경설정
                 config_query = "SELECT * FROM config AS `con` INNER JOIN manager AS `mg` ON `con`.`manager_no` = `mg`.`no`"
-                db_cursors.execute(config_query)  # SQL 실행
+                db_cursors.execute(config_query)     # SQL 실행
                 config_rows = db_cursors.fetchall()  # 데이터 가져옴
 
                 # DB get -> 변수 데이터 저장
@@ -251,6 +252,7 @@ class Database:
                     self.rf_reader_type = row['rf_reader_type']
                     self.manager_name = row['manager_name']
                     self.manager_no = row['manager_no']
+                    self.manager_key = row['shop_id']
                     self.encrypt = row['encrypt']
                     self.data_collect_state = row['data_collect_state']
             self.db_connect.commit()
@@ -260,27 +262,71 @@ class Database:
             self.closeConnectDB()
 
     # 관리자 설정 저장하기
-    def setAdminConfig(self):
-        pass
+    def setAdminConfig(self, dic_admin):
+        self.openConnectDB()
+        admin_pass = dic_admin['admin_password'].encode("utf-8")
+        temp = base64.b64encode(admin_pass)
+        admin_pass = temp.decode("utf-8")
+
+        try:
+            with self.db_connect.cursor(pymysql.cursors.DictCursor) as db_cursor:
+                sql_admin = 'UPDATE config SET bonus1 = %s, bonus2 = %s, bonus3 = %s, bonus4 = %s, bonus5 = %s, ' \
+                            'bonus6 = %s, bonus7 = %s, bonus8 = %s, bonus9 = %s, bonus10 = %s, ' \
+                            'card_price = %s, id = %s, admin_password = %s, min_card_price = %s'
+                db_cursor.execute(sql_admin, (
+                dic_admin["man"], dic_admin["2man"], dic_admin["3man"], dic_admin["4man"], dic_admin["5man"],
+                dic_admin["6man"], dic_admin["7man"], dic_admin["8man"], dic_admin["9man"], dic_admin["10man"],
+                dic_admin["card_price"], dic_admin['id'], admin_pass, dic_admin['min_card_price']))
+            self.db_connect.commit()
+        except Exception as error:
+            print("Set Admin Config Error : " + str(error))
+        finally:
+            self.db_connect.close()
+            self.loadConfigTable()  # 환경설정 불러오기
 
     # 마스터 설정 저장하기
-    def setMasterConfig(self):
-        pass
+    def setMasterConfig(self, dic_master):
+        admin_pass = dic_master['admin_password'].encode("utf-8")
+        temp = base64.b64encode(admin_pass)
+        admin_pass = temp.decode("utf-8")
+        manager_info = self.getManager(dic_master['manager_name'])
 
-    # 충전 데이터 저장
-    def setCardTable(self, dic):
         try:
             self.openConnectDB()
+            with self.db_connect.cursor() as db_cursor:
+                sql_master = 'UPDATE config SET ' \
+                      'bonus1 = %s, bonus2 = %s, bonus3 = %s,bonus4 = %s, bonus5 = %s, bonus6 = %s, ' \
+                      'bonus7 = %s, bonus8 = %s, bonus9 = %s, bonus10 = %s, card_price = %s, id = %s, ' \
+                      'admin_password = %s, min_card_price = %s, manager_no = %s, rf_reader_type = %s, shop_id = %s'
+                db_cursor.execute(sql_master,
+                               (
+                                   dic_master["man"], dic_master["2man"], dic_master["3man"], dic_master["4man"],
+                                   dic_master["5man"], dic_master["6man"], dic_master["7man"], dic_master["8man"],
+                                   dic_master["9man"], dic_master["10man"], dic_master["card_price"],
+                                   dic_master['id'], admin_pass, dic_master['min_card_price'],
+                                   str(manager_info['no']), dic_master['binary_type'], str(manager_info['manager_id'])
+                               )
+                               )
+            self.db_connect.commit()
+        except Exception as error:
+            print("Set Master Config Error : " + str(error))
+        finally:
+            self.closeConnectDB()
+        self.loadConfigTable()  # 환경설정 불러오기
 
+    # 충전 데이터 저장
+    def setCardTable(self, dic_card):
+        try:
+            self.openConnectDB()
             with self.db_connect.cursor(pymysql.cursors.DictCursor) as db_cursors:
-                card_num = dic['card_num']
-                total_money = dic['total_mny']           # 카드 잔액
-                current_money = dic['current_mny']       # 투입 금액
-                current_bonus = dic['current_bonus']     # 현재 보너스
-                charge_money = dic['charge_money']       # 총 충전금액
-                before_money = dic['before_mny']         # 충전 전 카드 잔액
-                reader_type = dic['reader_type']         # 충전된 리더기 종류
-                card_price = dic['card_price']           # 카드 가격
+                card_num = dic_card['card_num']
+                total_money = dic_card['total_mny']           # 카드 잔액
+                current_money = dic_card['current_mny']       # 투입 금액
+                current_bonus = dic_card['current_bonus']     # 현재 보너스
+                charge_money = dic_card['charge_money']       # 총 충전금액
+                before_money = dic_card['before_mny']         # 충전 전 카드 잔액
+                reader_type = dic_card['reader_type']         # 충전된 리더기 종류
+                card_price = dic_card['card_price']           # 카드 가격
                 # ex) 1만원 투입 시
                 # 투입금액 : 만원
                 # 현재 보너스 : 천원
@@ -291,10 +337,10 @@ class Database:
                 # 투입금액 + 현재 보너스 == 총 충전금액 -> 카드 충전
 
                 if int(current_money) + int(current_bonus) != int(charge_money):
-                    kind = 0  # 충전
+                    kind = 0  # 발급
                     card_price = self.getConfigArg("card_price")
                 else:
-                    kind = 1  # 발급
+                    kind = 1  # 충전
                     card_price = "0"
 
                 card_query = "INSERT INTO card " \
@@ -303,7 +349,6 @@ class Database:
                              "`card_price`, `kind`, `before_mny`, `reader_type`) " \
                              "VALUE (%s, %s, %s, %s, now(), '0', %s, %s, %s, %s, %s)"
                 db_cursors.execute(card_query, (card_num, total_money, current_money, current_bonus, charge_money, card_price, kind, before_money, reader_type))
-
             self.db_connect.commit()
         except Exception as error:
             print("Set Card Table Error : " + str(error))
@@ -311,10 +356,26 @@ class Database:
             self.closeConnectDB()
 
     # 누적 금액 저장
-    def setTotalTable(self):
-        pass
+    def setUpdateTotalTable(self, dic_total):
+        try:
+            self.openConnectDB()
+            with self.db_connect.cursor(pymysql.cursors.DictCursor) as db_cursor:
+                total_mny = dic_total['total_mny']      # 총 금액
+                charge_mny = dic_total['charge_mny']    # 충전 금액
+                bonus_mny = dic_total['bonus_mny']      # 보너스 금액
+                card_price = dic_total['card_price']    # 카드 가격
+                card_count = dic_total['card_count']    # 카드 갯수
 
-    # 공급업체 리스트 불러오기
+                total_sql = "UPDATE total SET `total` = total + %s, `charge` = charge + %s, `bonus` = bonus + %s, " \
+                            "`card` = card + %s, `card_count` = card_count + %s"
+                db_cursor.execute(total_sql, (total_mny, charge_mny, bonus_mny, card_price, card_count))
+            self.db_connect.commit()
+        except Exception as error:
+            print("Update Total Table Error : " + str(error))
+        finally:
+            self.closeConnectDB()
+
+    # 공급업체 리스트 불러오기 (Return)
     def getManagerList(self):
         try:
             self.openConnectDB()
@@ -348,6 +409,7 @@ class Database:
             print("Get Manager Error : " + str(error))
         finally:
             self.closeConnectDB()
+            return dic_manager
 
     # 에러로그 저장
     def insertErrorLog(self, err_log, place):
@@ -362,7 +424,7 @@ class Database:
         finally:
             self.closeConnectDB()
 
-    # 회원 보너스 적용
+    # 회원 보너스 적용하기
     def memberBonusConfig(self, mb_level):
         dic_member_bonus = OrderedDict()  # 반활할 회원 보너스
         try:
@@ -416,8 +478,64 @@ class Database:
             return 0
 
     # 보너스 계산 하기
-    def calculateMemberBonus(self):
-        pass
+    def calculateMemberBonus(self, arg):
+        bonus = 0
+        temp_money = arg
+        if arg >= 100000:
+            while temp_money >= 100000:
+                bonus += int(self.getStrMemberBonus(100000))
+                temp_money -= 100000
+
+        if temp_money >= 90000:
+            while temp_money >= 90000:
+                bonus += int(self.getStrMemberBonus(90000))
+                temp_money -= 90000
+
+        if temp_money >= 80000:
+            while temp_money >= 80000:
+                bonus += int(self.getStrMemberBonus(80000))
+                temp_money -= 80000
+
+        if temp_money >= 70000:
+            while temp_money >= 70000:
+                bonus += int(self.getStrMemberBonus(70000))
+                temp_money -= 70000
+
+        if temp_money >= 60000:
+            while temp_money >= 60000:
+                bonus += int(self.getStrMemberBonus(60000))
+                temp_money -= 60000
+
+        if temp_money >= 50000:
+            while temp_money >= 50000:
+                bonus += int(self.getStrMemberBonus(50000))
+                temp_money -= 50000
+
+        if temp_money >= 40000:
+            while temp_money >= 40000:
+                bonus += int(self.getStrMemberBonus(40000))
+                temp_money -= 40000
+
+        if temp_money >= 30000:
+            while temp_money >= 30000:
+                bonus += int(self.getStrMemberBonus(30000))
+                temp_money -= 30000
+
+        if temp_money >= 20000:
+            while temp_money >= 20000:
+                bonus += int(self.getStrMemberBonus(20000))
+                temp_money -= 20000
+
+        if temp_money >= 10000:
+            while temp_money >= 10000:
+                bonus += int(self.getStrMemberBonus(10000))
+                temp_money -= 10000
+
+        if temp_money > 0:
+            res = self.getStrMemberBonus(temp_money)
+            bonus += int(res)
+
+        return bonus
 
     # 보너스 초기화
     def initBonus(self):
@@ -433,7 +551,10 @@ class Database:
         self.member_bonus10 = 0
 
 
+# TODO : Database Test Code
 if __name__ == '__main__':
+    # pass
     app = Database()
-    # app.loadConfigTable()
-    # print("실행설공")
+    bonus = app.calculateMemberBonus(39000)
+    print(bonus)
+

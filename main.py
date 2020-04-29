@@ -1,10 +1,15 @@
+import base64
+from collections import OrderedDict
 from tkinter import *
+import tkinter.ttk
 from smartcard.CardMonitoring import CardMonitor
 from inc import admin, master, bill, ejector, RFreader, sound, common, AnimatedGif, database
+import pymysql.cursors
 import threading
 import sys
 import platform
 import time
+import subprocess, os
 
 
 class Application:
@@ -27,13 +32,18 @@ class Application:
     count_lookup_thread_sound_card_touch = 0
     bool_lookup_thread_sound_card_touch_state = False
 
-    main_input_money = 0             # 현재 투입금액
-    main_input_bonus = 0             # 투입금액에 따른 보너스
-    main_total_money = 0             # 투입금액 + 보너스
+    # TODO : 사용할 금액 변수
+    total_money = 0         # 토탈 ( 충전할 금액 + 현재 카드 잔액)
+    current_money = 0       # 투입금액
+    current_bonus = 0       # 보너스
+    charge_money = 0        # 충전할 금액 ( 투입금액 + 보너스)
+    before_money = 0        # 충전 전 금액 (현재 카드잔액)
+    card_price = 0          # 카드 가격
+    min_card_price = 0      # 카드 발급 최소 금액
 
-    main_min_issued_money = 1000     # 카드발급 최소금액
-
-    count_bill_input_sound = 0       # 지폐를 투입하여 주세요 음성 카운트
+    total = 0
+    charge_total = 0
+    bonus_total = 0
 
     '''UI Control Variable'''
     # Main View
@@ -206,9 +216,9 @@ class Application:
     entry_master_min_card_issued_money = ""
     entry_master_shop_id = ""
 
-    # Listbox
-    listbox_master_manager_info = ""
-    listbox_master_card_address = ""
+    # Combobox
+    combobox_master_manager_info = ""
+    combobox_master_card_address = ""
 
     # Button
     btn_master_db_comfirm = ""
@@ -216,13 +226,19 @@ class Application:
     btn_master_save = ""
     btn_master_cancel = ""
     btn_master_exit = ""
+
+    key_bored_process = ""
+
+    btn_init_start_image=""
+    btn_init_enable_image = ""
+
     # TODO : admin, master 끝
 
     def mainLabelVisible(self, second=1.0):
         self.common_class.toggleLabel(self.lbl_main_use, self.lbl_main_use_place)
         main_label_thread = threading.Timer(second, self.mainLabelVisible)
 
-        if self.main_input_money > 0 and not self.CHARGE_INIT_FLAG and not self.LOOKUP_INIT_FLAG and not self.ISSUED_INIT_FLAG:
+        if self.current_money > 0 and not self.CHARGE_INIT_FLAG and not self.LOOKUP_INIT_FLAG and not self.ISSUED_INIT_FLAG:
             if not self.sound_class.getBusySound():
                 self.sound_class.playSound("./msgs/msg025.wav")   # 음성 재생중이 아니면 투입금액이 있습니다 재생
 
@@ -236,19 +252,245 @@ class Application:
 
     # 관리자 인증
     def adminAuthSuccess(self, password):
-        if password == "1234":
+        if password == self.db_class.getConfigArg("password"):
             self.showFrame(self.frame_admin)
-        elif password == "gls12q23w":
+        elif password == self.db_class.getConfigArg("gil_password"):
+            self.showFrame(self.frame_admin)
+        elif password == self.db_class.getConfigArg("master_password"):
             self.showFrame(self.frame_master)
         else:
             msg = "잘못된 비밀번호 입니다."
             self.common_class.showMsgInfo(msg)
 
-    # 관리자 페이지 이동
-    def showAdminPage(self):
-        # self.entry_admin_bonus1 =
-        self.adminAuthSuccess(self.entry_login.get())
+    # 관리자 / 마스터 페이지 초기화
+    def initAdminMasterPage(self):
+        self.db_class.loadConfigTable()
+        self.showFrame(self.frame_login)  # 로그인 페이지 이동
+        self.db_class.loadConfigTable()   # 활경설정 불러오기
+        # self.tk_window.attributes('-fullscreen', False)
 
+        # ADMIN 기입창 내용지우기
+        self.entry_login.delete(0, END)
+        self.entry_admin_bonus1.delete(0, END)
+        self.entry_admin_bonus2.delete(0, END)
+        self.entry_admin_bonus3.delete(0, END)
+        self.entry_admin_bonus4.delete(0, END)
+        self.entry_admin_bonus5.delete(0, END)
+        self.entry_admin_bonus6.delete(0, END)
+        self.entry_admin_bonus7.delete(0, END)
+        self.entry_admin_bonus8.delete(0, END)
+        self.entry_admin_bonus9.delete(0, END)
+        self.entry_admin_bonus10.delete(0, END)
+
+        self.entry_admin_password.delete(0, END)
+        self.entry_admin_card_issued_money.delete(0, END)
+        self.entry_admin_min_card_issued_money.delete(0, END)
+        self.entry_admin_shop_id.delete(0, END)
+
+        # ADMIN 기입창 내용 삽입
+        self.entry_admin_bonus1.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(10000)))
+        self.entry_admin_bonus2.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(20000)))
+        self.entry_admin_bonus3.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(30000)))
+        self.entry_admin_bonus4.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(40000)))
+        self.entry_admin_bonus5.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(50000)))
+        self.entry_admin_bonus6.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(60000)))
+        self.entry_admin_bonus7.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(70000)))
+        self.entry_admin_bonus8.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(80000)))
+        self.entry_admin_bonus9.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(90000)))
+        self.entry_admin_bonus10.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(100000)))
+
+        self.entry_admin_password.insert(0, self.db_class.getConfigArg("password"))
+        self.entry_admin_card_issued_money.insert(0, self.db_class.getConfigArg("card_price"))
+        self.entry_admin_min_card_issued_money.insert(0, self.db_class.getConfigArg("min_card_price"))
+        self.entry_admin_shop_id.insert(0, self.db_class.getConfigArg("shop_id"))
+
+        # MASTER 기입창 내용지우기
+        self.entry_master_bonus1.delete(0, END)
+        self.entry_master_bonus2.delete(0, END)
+        self.entry_master_bonus3.delete(0, END)
+        self.entry_master_bonus4.delete(0, END)
+        self.entry_master_bonus5.delete(0, END)
+        self.entry_master_bonus6.delete(0, END)
+        self.entry_master_bonus7.delete(0, END)
+        self.entry_master_bonus8.delete(0, END)
+        self.entry_master_bonus9.delete(0, END)
+        self.entry_master_bonus10.delete(0, END)
+
+        self.entry_master_password.delete(0, END)
+        self.entry_master_card_issued_money.delete(0, END)
+        self.entry_master_min_card_issued_money.delete(0, END)
+        self.entry_master_shop_id.delete(0, END)
+
+        # MASTER 기입창 내용 삽입
+        self.entry_master_bonus1.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(10000)))
+        self.entry_master_bonus2.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(20000)))
+        self.entry_master_bonus3.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(30000)))
+        self.entry_master_bonus4.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(40000)))
+        self.entry_master_bonus5.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(50000)))
+        self.entry_master_bonus6.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(60000)))
+        self.entry_master_bonus7.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(70000)))
+        self.entry_master_bonus8.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(80000)))
+        self.entry_master_bonus9.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(90000)))
+        self.entry_master_bonus10.insert(0, self.common_class.stringNumberFormat(self.db_class.getConfigArg(100000)))
+
+        self.entry_master_password.insert(0, self.db_class.getConfigArg("password"))
+        self.entry_master_card_issued_money.insert(0, self.db_class.getConfigArg("card_price"))
+        self.entry_master_min_card_issued_money.insert(0, self.db_class.getConfigArg("min_card_price"))
+        self.entry_master_shop_id.insert(0, self.db_class.getConfigArg("shop_id"))
+
+        manager_title = self.db_class.getConfigArg("manager_name")
+        self.lbl_master_manager_info.config(text="현재 업체 상태 : " + manager_title)
+
+        card_address = self.db_class.getConfigArg("rf_reader_type")
+        self.lbl_master_card_address.config(text="현재 저장 번지 : " + card_address)
+
+        # 키보드 원본 fcitx , iBus
+        self.key_bored_process = subprocess.Popen(['florence show'], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        if not "" == self.key_bored_process.stderr.readline():
+            self.key_bored_process = subprocess.Popen(['florence'], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        return
+
+    # 관리자 페이지 설정 저장
+    def saveAdminPage(self):
+        msg = self.common_class.showMsgYesNo("저장 하시겠습니까?")
+        if msg:
+            dic_save_admin = OrderedDict()
+            dic_save_admin["man"] = int(self.entry_admin_bonus1.get().replace(",", ""))
+            dic_save_admin["2man"] = int(self.entry_admin_bonus2.get().replace(",", ""))
+            dic_save_admin["3man"] = int(self.entry_admin_bonus3.get().replace(",", ""))
+            dic_save_admin["4man"] = int(self.entry_admin_bonus4.get().replace(",", ""))
+            dic_save_admin["5man"] = int(self.entry_admin_bonus5.get().replace(",", ""))
+            dic_save_admin["6man"] = int(self.entry_admin_bonus6.get().replace(",", ""))
+            dic_save_admin["7man"] = int(self.entry_admin_bonus7.get().replace(",", ""))
+            dic_save_admin["8man"] = int(self.entry_admin_bonus8.get().replace(",", ""))
+            dic_save_admin["9man"] = int(self.entry_admin_bonus9.get().replace(",", ""))
+            dic_save_admin["10man"] = int(self.entry_admin_bonus10.get().replace(",", ""))
+            dic_save_admin["card_price"] = int(self.entry_admin_card_issued_money.get().replace(",", ""))
+            dic_save_admin["min_card_price"] = int(self.entry_admin_min_card_issued_money.get().replace(",", ""))
+            dic_save_admin["id"] = self.entry_admin_shop_id.get()
+            dic_save_admin["admin_password"] = self.entry_admin_password.get()
+
+            self.db_class.setAdminConfig(dic_save_admin)
+
+            # if not self.DEBUG:
+            #     if 'Linux' in platform.system():
+            #         self.window.attributes('-fullscreen', True)
+
+            if self.key_bored_process:
+                self.key_bored_process.kill()
+
+            self.db_class.loadConfigTable()
+            self.showFrame(self.frame_main)
+
+    # 마스터 페이지 설정 저장
+    def saveMasterPage(self):
+        msg = self.common_class.showMsgYesNo("저장 하시겠습니까?")
+        if msg:
+            dic_save_master = OrderedDict()
+            dic_save_master["man"] = int(self.entry_admin_bonus1.get().replace(",", ""))
+            dic_save_master["2man"] = int(self.entry_admin_bonus2.get().replace(",", ""))
+            dic_save_master["3man"] = int(self.entry_admin_bonus3.get().replace(",", ""))
+            dic_save_master["4man"] = int(self.entry_admin_bonus4.get().replace(",", ""))
+            dic_save_master["5man"] = int(self.entry_admin_bonus5.get().replace(",", ""))
+            dic_save_master["6man"] = int(self.entry_admin_bonus6.get().replace(",", ""))
+            dic_save_master["7man"] = int(self.entry_admin_bonus7.get().replace(",", ""))
+            dic_save_master["8man"] = int(self.entry_admin_bonus8.get().replace(",", ""))
+            dic_save_master["9man"] = int(self.entry_admin_bonus9.get().replace(",", ""))
+            dic_save_master["10man"] = int(self.entry_admin_bonus10.get().replace(",", ""))
+            dic_save_master["card_price"] = int(self.entry_admin_card_issued_money.get().replace(",", ""))
+            dic_save_master["min_card_price"] = int(self.entry_admin_min_card_issued_money.get().replace(",", ""))
+            dic_save_master["id"] = self.entry_admin_shop_id.get()
+            dic_save_master["admin_password"] = self.entry_admin_password.get()
+
+            dic_save_master["manager_name"] = self.combobox_master_manager_info.get()
+            dic_save_master["binary_type"] = self.combobox_master_card_address.get()
+
+            self.db_class.setMasterConfig(dic_save_master)
+
+            # if not self.DEBUG:
+            #     if 'Linux' in platform.system():
+            #         self.window.attributes('-fullscreen', True)
+
+            if self.key_bored_process:
+                self.key_bored_process.kill()
+
+            self.db_class.loadConfigTable()
+            self.showFrame(self.frame_main)
+
+    # 마스터 페이지 - 데이터 베이스 초기화
+    def masterDBInithandle(self):
+        try:
+            self.db_class.openConnectDB()
+            with self.db_class.db_connect.cursor(pymysql.cursors.DictCursor) as db_cursor:
+                delete_card_sql = "DELETE * FROM card"  # 카드 테이블 삭제
+                db_cursor.execute(delete_card_sql)
+                insert_total_query = "INSERT INTO total (`no`, `total`, `charge`, `bonus`, `card`, `card_count`) " \
+                                     "VALUE (1, '0', '0', '0', '0', '0') ON DUPLICATE KEY UPDATE " \
+                                     "total = '0', charge = '0', bonus = '0', card = '0', card_count = '0'"  # 토탈 테이블 초기화
+                db_cursor.execute(insert_total_query)
+
+                init_pw = '1234'
+                admin_pw = init_pw.encode('utf-8')
+                base_admin_pw = base64.b64encode(admin_pw)
+                admin_pw = base_admin_pw.decode('utf-8')
+
+                update_config_sql = "UPDATE config SET admin_password = %s, `device_addr` = '01', card_price = 1000, " \
+                                    "bonus1 = '1000', bonus2 = '3000', bonus3 = '5000', bonus4 = '7000', bonus5 = '10000'," \
+                                    "bonus6 = '11000', bonus7 = '13000', bonus8 = '15000', bonus9 = '17000', " \
+                                    "bonus10 = '20000', id = '0000', shop_name = 'abcd' WHERE no = 1"  # 설정 초기화
+                db_cursor.execute(update_config_sql)
+            self.db_class.db_connect.commit()
+        except Exception as error:
+            print("master Db Init handle Error : " + str(error))
+        finally:
+            self.db_class.closeConnectDB()
+            self.db_class.loadConfigTable()
+            self.showFrame(self.frame_main)
+
+    # 마스터 페이지 - 데이터 베이스 초기화 체크 (카드, 토탈 테이블 확인)
+    def masterDBInitCheckHandle(self):
+        total_mny = 0
+        try:
+            self.db_class.openConnectDB()
+            with self.db_class.db_connect.cursor(pymysql.cursors.DictCursor) as db_cursor:
+                card_query = "SELECT * FROM card"  # 카드테이블 초기화
+                db_cursor.execute(card_query)
+
+                rows = db_cursor.fetchall()
+                card_length = len(rows)
+                if int(card_length) > 0:
+                    self.common_class.showMsgInfo("카드테이블이 초기화 되지 않았습니다.")
+                    return False
+
+                query = "SELECT * FROM total"  # 토탈 테이블 초기화
+                db_cursor.execute(query)
+                rows = db_cursor.fetchall()
+                for row in rows:
+                    total_mny += int(row['total'])
+
+                if total_mny > 0:
+                    self.common_class.showMsgInfo("토탈테이블이 초기화 되지 않았습니다.")
+                    return False
+            self.db_class.db_connect.commit()
+        finally:
+            self.db_class.closeConnectDB()
+        self.common_class.showMsgInfo("초기화 상태입니다.")
+        return True
+
+    # 매장 ID 등록 모드 진입 - 카드 금액 초기화
+    def cardInitMoney(self):
+        self.lbl_init_shop_id.config(text="저장될 매장 ID : " + self.db_class.getConfigArg("shop_id"))
+        self.btn_init_start.config(image=self.btn_init_start_image)
+        # self.btn_init_start.place_forget()
+        self.showFrame(self.frame_card_init)
+
+    # 카드 금액 초기화 시작, 매장 ID등록
+    def startCardInitMoney(self):
+        self.reader_class.INIT_STATE = True
+        self.btn_init_start.place_forget()
+        self.btn_init_start.config(image=self.btn_init_enable_image)
+        self.btn_init_start.place(x=250, y=233)
+        self.common_class.showMsgInfo("카드 초기화모드를 시작합니다. 전면 리더기에 카드를 터치해주세요.")
 
     # 프레임 전환
     def showFrame(self, frame):
@@ -264,10 +506,14 @@ class Application:
         self.btn_charge.config(state="active")
         self.btn_issued.config(state="active")
         self.btn_lookup.config(state="active")
+        self.btn_init_start.config(image=self.btn_init_start_image)
         self.showFrame(self.frame_main)
 
         if self.sound_class.getBusySound():
             self.sound_class.stopSound()
+
+        if self.key_bored_process:
+            self.key_bored_process.kill()
 
         self.reader_class.CHARGE_STATE = False
         self.reader_class.ISSUED_STATE = False
@@ -334,7 +580,7 @@ class Application:
 
         # 음성 재생중이 아니라면
         if not self.sound_class.getBusySound():
-            if self.reader_class.input_money > 0:  # 투입금액이 있을 때
+            if self.reader_class.current_money > 0:  # 투입금액이 있을 때
                 self.sound_class.playSound("./msgs/msg009.wav")  # 지폐를 더 투입하거나 다음 버튼을 눌러주세요
             else:
                 self.sound_class.playSound("./msgs/msg008.wav")  # 지폐를 투입하여 주세요
@@ -525,52 +771,60 @@ class Application:
                     ejector_state = self.ejector_class.ejectorSendData("state")
                     print("배출기 상태 : ", ejector_state)
                     if ejector_state == 4 or ejector_state == 5 or ejector_state == 2:
-                        # self.bonus = int(self.get_bonus(self.input_money))
-                        # self.rf_class.bonus = int(self.get_bonus(self.input_money))
 
-                        # card_price = int(self.config.get_config("card_price"))  # 카드 가격
-                        # temp = card_price - self.bonus  # 카드 가격에서 보너스를 뺌
-                        # total_use = 0
+                        # 보너스 계산
+                        self.current_bonus = int(self.db_class.calculateMemberBonus(self.current_money))
+                        self.reader_class.current_bonus = int(self.reader_class.getBonus(self.current_money))
 
-                        self.reader_class.input_money = self.main_input_money - self.main_min_issued_money
+                        # 카드 가격, 카드 발급 최소금액 계산
+                        self.card_price = int(self.db_class.getConfigArg("card_price"))
+                        self.reader_class.card_price = int(self.db_class.getConfigArg("card_price"))
+                        self.min_card_price = int(self.db_class.getConfigArg("min_card_price"))
+                        self.reader_class.min_card_price = int(self.db_class.getConfigArg("min_card_price"))
 
-                        # if self.main_input_money > 0:  # 카드가격이 남았다면
-                        #     # input_money = self.input_money - temp
-                        #     # self.use_bonus = self.bonus
-                        #     self.input_money -= temp
-                        #     self.rf_class.input_money -= temp
-                        #     self.rf_class.bonus = 0
-                        #     self.bonus = 0
+                        # 총 충전 잔액 구하기
+                        self.charge_money = self.current_money + self.current_bonus
+                        self.reader_class.charge_money = self.reader_class.current_money + self.reader_class.current_bonus
+
+                        # 총 충전금액 - 카드 가격
+                        self.charge_money -= self.card_price
+                        self.reader_class.charge_money -= self.reader_class.card_price
+
+                        # # 카드가격이 남았다면
+                        # if self.current_money > 0:
+                        #     # self.current_money -= temp
+                        #     # self.reader_class.current_money -= temp
+                        #     self.current_bonus = 0
+                        #     self.reader_class.current_bonus = 0
                         # else:
-                        #     self.bonus -= card_price
-                        #     self.use_bonus = card_price
-                        #     self.rf_class.bonus -= card_price
-                        #     input_money = self.input_money
+                        #     self.current_bonus -= self.card_price
+                        #     self.use_bonus = self.card_price
+                        #     self.reader_class.current_bonus -= self.card_price
 
-                        # dic = OrderedDict()
-                        #
-                        # dic['total_mny'] = str(total_use)
-                        # dic['charge_mny'] = "0"
-                        # dic['bonus_mny'] = "0"
-                        # dic['card_price'] = str(card_price)
-                        # dic['card_count'] = "1"
-                        #
-                        # self.config.set_total_table(dic)
+                        # (발급 데이터 -> DB) 저장할 딕셔너리
+                        dic_issued = OrderedDict()
+                        dic_issued['total_mny'] = str(self.charge_money)
+                        dic_issued['charge_mny'] = "0"
+                        dic_issued['bonus_mny'] = "0"
+                        dic_issued['card_price'] = str(self.card_price)
+                        dic_issued['card_count'] = "1"
+
+                        self.db_class.setUpdateTotalTable(dic_issued)
 
                         self.ejector_class.ejectorSendData("disable")
                         self.btn_charge.config(state="active")
                         self.btn_issued.config(state="active")
                         self.btn_lookup.config(state="active")
 
-                        # total_view_mny = self.input_money + self.bonus
+                        total_view_mny = self.current_money + self.current_bonus
 
-                        # total_view_mny = self.my.number_format(total_view_mny)
-                        # input_money = self.my.number_format(input_money)
+                        # total_view_mny = self.common_class.stringNumberFormat(total_view_mny)
+                        # input_money = self.common_class.stringNumberFormat(input_money)
 
                         self.changeMoneyView()
 
                         # 금액에 따른 플래그 처리
-                        if self.reader_class.input_money > 0:
+                        if self.reader_class.current_money > 0:
                             self.reader_class.ISSUED_STATE = True
                             # self.rf_class.ISSUED_ENABLE = False
                         else:
@@ -710,33 +964,40 @@ class Application:
 
     # 한 사이클 수행 후 금액 초기화
     def initViewMoney(self):
-        # 투입금액, 보너스, 토탈금액 초기화
-        self.main_input_money = 0
-        self.main_input_bonus = 0
-        self.main_total_money = 0
+        self.total_money = 0
+        self.current_money = 0
+        self.current_bonus = 0
+        self.charge_money = 0
+        self.before_money = 0
 
-        self.reader_class.remain_money = 0
-        self.reader_class.input_money = 0
-        self.reader_class.input_bonus = 0
         self.reader_class.total_money = 0
+        self.reader_class.current_money = 0
+        self.reader_class.current_bonus = 0
+        self.reader_class.charge_money = 0
+        self.reader_class.before_money = 0
+
         self.changeMoneyView()
 
-    # 메인 UI 제어 스레드 - 충전, 발급, 조회, 초기화 모두 해당
+    # 메인 금액 변화 UI 제어 스레드 - 충전, 발급, 조회, 초기화 모두 해당
     # Main UI control thread - for charge, issue, lookup, initialization
     def threadUIMainView(self, second=1.0):
         # 초기화 여부 검사
         if self.reader_class.INIT_STATE:
-            pass
+            if self.reader_class.flag_init:
+                self.lbl_init_use.config(text="매장 ID 입력 상태 : 성공", fg="blue")
+            else:
+                self.lbl_init_use.config(text="매장 ID 입력 상태 : 실패", fg="red")
 
         # 충전 여부 검사
         if self.reader_class.flag_charge:
             self.reader_class.CHARGE_STATE = False
             self.reader_class.ISSUED_STATE = False
 
-            self.CHARGE_INIT_FLAG = False  #  투입금액 관련 음성 플래그 OFF
+            self.CHARGE_INIT_FLAG = False          # 투입금액 관련 음성 플래그 OFF
+            self.reader_class.flag_charge = False  # 충전 여부 플래그 OFF
 
-            self.main_total_money = self.reader_class.total_money
-            self.lbl_charge_page_2_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.main_total_money))))
+            self.total_money = self.reader_class.total_money
+            self.lbl_charge_page_2_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.reader_class.total_money))))
 
             # 충전 완료 프레임 이동
             self.showFrame(self.frame_charge_page_2)
@@ -745,7 +1006,6 @@ class Application:
                 self.sound_class.stopSound()
 
             self.sound_class.playSound("./msgs/msg013.wav")  # 충전 완료 음성
-            self.reader_class.flag_charge = False  # 충전 플래그 OFF
 
             self.bool_charge_sound_card_touch_state = True
             self.bool_charge_thread_sound_bill_input_state = True
@@ -766,7 +1026,8 @@ class Application:
             self.reader_class.ISSUED_STATE = False
             self.reader_class.INIT_STATE = False
 
-            self.LOOKUP_INIT_FLAG = False  # 투입금액 관련 음성 플래그 OFF
+            self.LOOKUP_INIT_FLAG = False          # 투입금액 관련 음성 플래그 OFF
+            self.reader_class.flag_lookup = False  # 조회 여부 플래그 OFF
 
             self.lbl_lookup_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.reader_class.remain_money))))
             self.showFrame(self.frame_lookup)
@@ -775,7 +1036,6 @@ class Application:
                 self.sound_class.stopSound()
 
             self.sound_class.playSound("./msgs/msg018.wav")  # 잔액 조회 완료 음성
-            self.reader_class.flag_lookup = False   # 잔액 플래그 OFF
 
             # 잔액조회 음성 중지
             if self.thread_lookup_sound_card_touch:
@@ -792,17 +1052,20 @@ class Application:
     # 모든 뷰 금액 변경
     def changeMoneyView(self):
         try:
-            self.lbl_charge_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.main_input_money))))
-            self.lbl_charge_page_1_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.main_input_money))))
-            self.lbl_charge_page_2_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.main_input_money))))
-            self.lbl_issued_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.main_input_money))))
-            self.lbl_issued_card_issued_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.main_min_issued_money))))
+            self.lbl_charge_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.charge_money))))
+            self.lbl_charge_page_1_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.current_money))))
+            self.lbl_charge_page_1_bonus.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.current_bonus))))
+            self.lbl_charge_page_2_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.charge_money))))
+            self.lbl_issued_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.charge_money))))
+            self.card_price = int(self.db_class.getConfigArg("card_price"))
+            self.reader_class.card_price = int(self.db_class.getConfigArg("card_price"))
+            self.lbl_issued_card_issued_money.config(text="{} 원".format(self.common_class.stringNumberFormat(str(self.card_price))))
 
-            if self.main_input_money == "0" or self.main_input_money == 0:
+            if self.charge_money == "0" or self.charge_money == 0:
                 lbl_font_color = "black"
             else:
                 lbl_font_color = "red"
-            self.lbl_main_money.config(text="투입금액       {} 원".format(self.common_class.stringNumberFormat(str(self.main_input_money))), fg=lbl_font_color)
+            self.lbl_main_money.config(text="투입금액       {} 원".format(self.common_class.stringNumberFormat(str(self.charge_money))), fg=lbl_font_color)
 
         except Exception as error:
             print("threadChangeMoneyView Error : " + str(error))
@@ -811,24 +1074,37 @@ class Application:
     # 지폐인식 스레드
     def threadBillReader(self, second=1.0):
         bill_status = self.bill_class.billSendData("getActiveStatus")
+
         if bill_status == 1 or bill_status == 11:
             bill_data = self.bill_class.billSendData("billdata")
-            # print(bill_data)
 
             # 투입금액 있으면
             if type(bill_data) == int and bill_data > 0:
                 # 투입금액 처리
-                self.main_input_money += bill_data
-                self.reader_class.input_money += bill_data
-                self.changeMoneyView()  # 금액 뷰
+                self.current_money += bill_data
+                self.reader_class.current_money += bill_data
 
-                # 보너스 처리 해야함
+                # 보너스 처리
+                self.current_bonus = int(self.db_class.calculateMemberBonus(self.current_money))
+                self.reader_class.current_bonus = int(self.db_class.calculateMemberBonus(self.reader_class.current_money))
+
+                # 발급 버튼에 추가하기
+                # self.db_class.loadConfigTable()
+                # self.card_price = self.db_class.getConfigArg("card_price")
+                # self.min_card_price = self.db_class.getConfigArg("min_card_price")
+
+                # bonus = int(self.db_class.calculateMemberBonus(self.current_money))  # 보너스 : 전체 투입금액에 대한 보너스 구함
+                # self.reader_class.bonus = int(bonus)  # 리더기에 사용할 변수에 투입금액에 대한 보너스 주입
+                # self.reader_class.current_bonus = int(self.reader_class.getBonus(self.main_input_money))  # 리더기에 사용할 변수에 투입금액에 대한 보너스 주입
+
+                self.charge_money = self.current_money + self.current_bonus  # 총전 전 잔액 = 투입금액 + 보너스
 
                 if self.sound_class.getBusySound():
                     self.sound_class.stopSound()
                 self.sound_class.playSound("./msgs/msg022.wav")  # 지폐가 투입되었습니다
 
                 self.bill_class.billSendData("insertE")
+                self.changeMoneyView()  # 금액 뷰
 
         bill_thread = threading.Timer(second, self.threadBillReader)
         bill_thread.daemon = True
@@ -868,7 +1144,7 @@ class Application:
     def billCheckChangeNextButtonThread(self, second=0.3):
         try:
             # 투입금액이 있다면
-            if self.main_input_money > 0:
+            if self.current_money > 0:
                 self.btn_charge_next_gif.config(state="active")
 
                 # 충전 버튼 움직이나
@@ -876,7 +1152,7 @@ class Application:
                     self.nextChargeButtonOnAnimate()
 
                 # 투입금액이 카드 발급 최소금액 보다 크면 다음 버튼 활성화
-                if self.main_input_money >= self.main_min_issued_money:
+                if self.current_money >= self.min_card_price:
                     if self.isNextIssuedButtonAnimate():
                         self.issuedNextButtonAnimate()
                         self.btn_issued_next_gif.config(state="active")
@@ -913,7 +1189,7 @@ class Application:
         self.threadBillReader(1.0)
         self.billCheckChangeNextButtonThread(0.5)
 
-        # 메인 금액 뷰 실시간 조회 스레드
+        # 메인 금액 뷰 실시간 스레드
         self.threadUIMainView(1.0)        # 충전, 조회 플래그 검사 후
 
     # UI Initialize
@@ -927,14 +1203,15 @@ class Application:
         self.ejector_class = ejector.Ejector()
         self.sound_class = sound.Sound()
         self.common_class = common.Common()
+        self.db_class = database.Database()
+
+        self.tk_window.title("kang hyun jin")    # 윈도우이름.title("제목")
+        self.tk_window.geometry("1024x768+0+0")  # 윈도우이름.geometry("너비x높이+xpos+ypos")
+        self.tk_window.resizable(False, False)   # 윈도우이름.resizeable(상하,좌우) : 인자 상수를 입력해도 적용가능
 
         if 'Linux' in platform.system():
             self.tk_window.title("Touch Charger")
             self.tk_window.attributes('-fullscreen', True)
-
-        self.tk_window.title("kang hyun jin")        # 윈도우이름.title("제목")
-        self.tk_window.geometry("1024x768+0+0")      # 윈도우이름.geometry("너비x높이+xpos+ypos")
-        self.tk_window.resizable(False, False)       # 윈도우이름.resizeable(상하,좌우) : 인자 상수를 입력해도 적용가능
 
         self.frame_main = Frame(self.tk_window)
         self.frame_charge = Frame(self.tk_window)
@@ -973,8 +1250,8 @@ class Application:
 
         main_use_image = PhotoImage(file="./images/main_use_label.png")
 
-        btn_init_start_image = PhotoImage(file="./images/init_start_btn.png")
-        btn_init_enable_image = PhotoImage(file="./images/init_start_btn_enable.png")
+        self.btn_init_start_image = PhotoImage(file="./images/init_start_btn.png")
+        self.btn_init_enable_image = PhotoImage(file="./images/init_start_btn_enable.png")
         btn_init_quit_image = PhotoImage(file="./images/init_quit_btn.png")
 
         # 테스트
@@ -1002,18 +1279,17 @@ class Application:
         # Admin Login Page
         self.btn_hide_login = Button(self.frame_main, relief="solid", bd="0", bg="#a8c4b9", width=30, height=4,
                                      activebackground='#a8c4b9', highlightthickness=4, highlightcolor="#a8c4b9",
-                                     highlightbackground="#a8c4b9", command=lambda: self.showFrame(self.frame_login))
+                                     highlightbackground="#a8c4b9", command=lambda: self.initAdminMasterPage())
         self.btn_hide_login.place(x=20, y=0)
 
         self.entry_login = Entry(self.frame_login, show="*")
-        self.entry_login.delete(0, END)  # 기입창 내용지우기
         self.entry_login.place(x=387, y=407)
         self.btn_login_config = Button(self.frame_login, text="확인", width=5,
-                                       command=lambda: self.showAdminPage())
-        self.btn_login_config.place(x=540, y=403)
+                                       command=lambda: self.adminAuthSuccess(self.entry_login.get()))
+        self.btn_login_config.place(x=560, y=403)
         self.btn_login_cancel = Button(self.frame_login, text="취소", width=5,
-                                       command=lambda: self.showFrame(self.frame_main))
-        self.btn_login_cancel.place(x=600, y=403)
+                                       command=lambda: self.resetMainView())
+        self.btn_login_cancel.place(x=640, y=403)
 
         # Admin Page
         self.lbl_admin_use = Label(self.frame_admin, text="관리자 환경설정", font=("", 40, "bold"), anchor="e")
@@ -1092,15 +1368,14 @@ class Application:
         self.entry_admin_shop_id.place(x=700, y=450)
 
         self.btn_admin_init_shop_id = Button(self.frame_admin, text="매장 ID 등록 모드 진입", activebackground="blue",
-                                             command=lambda: self.showFrame(self.frame_card_init),
-                                             font=("", 13, "bold"), width=20, height=2)
+                                 command=lambda: self.cardInitMoney(), font=("", 13, "bold"), width=20, height=2)
         self.btn_admin_init_shop_id.place(x=700, y=550)
 
         self.btn_admin_save = Button(self.frame_admin, text="저    장", width=20, height=2, font=("", 15, "bold")
-                                     )
+                                     ,command=lambda: self.saveAdminPage())
         self.btn_admin_save.place(x=250, y=650)
         self.btn_admin_cancel = Button(self.frame_admin, text="취    소", width=20, height=2, font=("", 15, "bold"),
-                                       command=lambda: self.showFrame(self.frame_main))
+                                       command=lambda: self.resetMainView())
         self.btn_admin_cancel.place(x=500, y=650)
         self.btn_admin_exit = Button(self.frame_admin, text="프로그램\n종료", width=10, height=2, font=("", 15, "bold"),
                                      command=lambda: self.exitProgram())
@@ -1113,12 +1388,11 @@ class Application:
         self.lbl_init_shop_id = Label(self.frame_card_init, text="저장될 매장 ID : 0000", font=("", 30, "bold"), anchor="e",
                                       width=30, bg="#a8c4b9")
         self.lbl_init_shop_id.place(x=0, y=160)
-        self.btn_init_start = Button(self.frame_card_init, image=btn_init_start_image, bd="0", bg="#a8c4b9",
-                                     activebackground='#a8c4b9')
+        self.btn_init_start = Button(self.frame_card_init, image=self.btn_init_start_image, bd="0", bg="#a8c4b9",
+                                     command=lambda:self.startCardInitMoney(), activebackground='#a8c4b9')
         self.btn_init_start.place(x=250, y=235)
         self.btn_init_cancel = Button(self.frame_card_init, image=btn_init_quit_image, bd="0", bg="#a8c4b9",
-                                      activebackground='#a8c4b9',
-                                      command=lambda: self.showFrame(self.frame_main))
+                                  activebackground='#a8c4b9', command=lambda: self.resetMainView())
         self.btn_init_cancel.place(x=550, y=235)
 
         # Master Page
@@ -1195,24 +1469,45 @@ class Application:
         self.entry_master_shop_id = Entry(self.frame_master, width=10, font=("", 25))
         self.entry_master_shop_id.place(x=700, y=300)
 
-        '''+ str(데이터베이스 업체등록)'''
-        self.lbl_master_manager_info = Label(self.frame_master, text="현재 업체 상태 : "
-                                             , font=("", 15, "bold"))
+        # 현재 업체, 카드 저장번지 셀렉트
+        manager_name = self.db_class.getConfigArg("manager_name")
+        card_address = self.db_class.getConfigArg("rf_reader_type")
+
+        manager_list = self.db_class.getManagerList()  # 공급업체 리스트 가져오기
+        manager_value = []       # 콤보박스 인자값 : 공급업체 이름
+        card_address_value = []  # 콤보박스 인자값 : 카드 저장번지
+
+        for manager in manager_list:
+            manager_value.append(manager['manager_name'])
+
+        card_address_value.append("1")
+        card_address_value.append("2")
+
+        self.lbl_master_manager_info = Label(self.frame_master, text="현재 업체 상태 : " + manager_name, anchor="e", font=("", 15, "bold"))
         self.lbl_master_manager_info.place(x=550, y=360)
-        '''+str(현재카드 저장번지)'''
-        self.lbl_master_card_address = Label(self.frame_master, text="현재 저장 번지 : "
-                                             , font=("", 15, "bold"))
+
+        self.lbl_master_card_address = Label(self.frame_master, text="현재 저장 번지 : " + card_address, anchor="e", font=("", 15, "bold"))
         self.lbl_master_card_address.place(x=550, y=450)
 
-        self.btn_master_db_comfirm = Button(self.frame_master, text="데이터베이스 확인")
+        self.combobox_master_manager_info = tkinter.ttk.Combobox(self.frame_master, values=manager_value, height=15, font=("", 15, 'bold'))
+        self.combobox_master_manager_info.set(self.db_class.getConfigArg("manager_name"))
+        self.combobox_master_manager_info.place(x=550, y=410)
+
+        self.combobox_master_card_address = tkinter.ttk.Combobox(self.frame_master, values=card_address_value, height=15, font=("", 15, 'bold'))
+        self.combobox_master_card_address.set(self.db_class.getConfigArg("rf_reader_type"))
+        self.combobox_master_card_address.place(x=550, y=500)
+
+        self.btn_master_db_comfirm = Button(self.frame_master, text="데이터베이스 확인", command=lambda:self.masterDBInitCheckHandle())
         self.btn_master_db_comfirm.place(x=850, y=550)
-        self.btn_master_db_init = Button(self.frame_master, text="데이터베이스 초기화")
+
+        self.btn_master_db_init = Button(self.frame_master, text="데이터베이스 초기화", command=lambda:self.masterDBInithandle())
         self.btn_master_db_init.place(x=850, y=600)
 
-        self.btn_master_save = Button(self.frame_master, text="저    장", width=20, height=2, font=("", 15, "bold"))
+        self.btn_master_save = Button(self.frame_master, text="저    장", width=20, height=2, font=("", 15, "bold")
+                                      ,command=lambda:self.saveMasterPage())
         self.btn_master_save.place(x=250, y=650)
         self.btn_master_cancel = Button(self.frame_master, text="취    소", width=20, height=2, font=("", 15, "bold"),
-                                        command=lambda: self.showFrame(self.frame_main))
+                                        command=lambda: self.resetMainView())
         self.btn_master_cancel.place(x=500, y=650)
         self.btn_master_exit = Button(self.frame_master, text="프로그램\n종료", width=10, height=2, font=("", 15, "bold"),
                                       command=lambda: self.exitProgram())
@@ -1281,7 +1576,6 @@ class Application:
         self.lbl_charge_page_1_bonus.place(x=744, y=295)
         self.lbl_charge_page_2_money = Label(self.frame_charge_page_2, text="0 원", width=11, fg="#33ffcc", bg="#454f49", font=("Corier", 40), anchor="e")
         self.lbl_charge_page_2_money.place(x=490, y=215)
-
 
         self.btn_charge_page1_back = Button(self.frame_charge_page_1, image=charge_back_btn_image, bd="0", bg="#a8c4b9",
                                         activebackground='#a8c4b9', highlightthickness=4,
