@@ -422,7 +422,7 @@ class Application:
         try:
             self.db_class.openConnectDB()
             with self.db_class.db_connect.cursor(pymysql.cursors.DictCursor) as db_cursor:
-                delete_card_sql = "DELETE * FROM card"  # 카드 테이블 삭제
+                delete_card_sql = "DELETE FROM card"  # 카드 테이블 삭제
                 db_cursor.execute(delete_card_sql)
                 insert_total_query = "INSERT INTO total (`no`, `total`, `charge`, `bonus`, `card`, `card_count`) " \
                                      "VALUE (1, '0', '0', '0', '0', '0') ON DUPLICATE KEY UPDATE " \
@@ -438,14 +438,14 @@ class Application:
                                     "bonus1 = '1000', bonus2 = '3000', bonus3 = '5000', bonus4 = '7000', bonus5 = '10000'," \
                                     "bonus6 = '11000', bonus7 = '13000', bonus8 = '15000', bonus9 = '17000', " \
                                     "bonus10 = '20000', id = '0000', shop_name = 'abcd' WHERE no = 1"  # 설정 초기화
-                db_cursor.execute(update_config_sql)
+                db_cursor.execute(update_config_sql, (admin_pw))
             self.db_class.db_connect.commit()
         except Exception as error:
             print("master Db Init handle Error : " + str(error))
         finally:
             self.db_class.closeConnectDB()
-            self.db_class.loadConfigTable()
-            self.showFrame(self.frame_main)
+        self.db_class.loadConfigTable()
+        self.showFrame(self.frame_main)
 
     # 마스터 페이지 - 데이터 베이스 초기화 체크 (카드, 토탈 테이블 확인)
     def masterDBInitCheckHandle(self):
@@ -790,16 +790,6 @@ class Application:
                         self.charge_money -= self.card_price
                         self.reader_class.charge_money -= self.reader_class.card_price
 
-                        # # 카드가격이 남았다면
-                        # if self.current_money > 0:
-                        #     # self.current_money -= temp
-                        #     # self.reader_class.current_money -= temp
-                        #     self.current_bonus = 0
-                        #     self.reader_class.current_bonus = 0
-                        # else:
-                        #     self.current_bonus -= self.card_price
-                        #     self.use_bonus = self.card_price
-                        #     self.reader_class.current_bonus -= self.card_price
 
                         # (발급 데이터 -> DB) 저장할 딕셔너리
                         dic_issued = OrderedDict()
@@ -816,20 +806,13 @@ class Application:
                         self.btn_issued.config(state="active")
                         self.btn_lookup.config(state="active")
 
-                        total_view_mny = self.current_money + self.current_bonus
-
-                        # total_view_mny = self.common_class.stringNumberFormat(total_view_mny)
-                        # input_money = self.common_class.stringNumberFormat(input_money)
-
                         self.changeMoneyView()
 
                         # 금액에 따른 플래그 처리
                         if self.reader_class.current_money > 0:
                             self.reader_class.ISSUED_STATE = True
-                            # self.rf_class.ISSUED_ENABLE = False
                         else:
                             self.reader_class.ISSUED_STATE = False
-                            # self.reader_class.ISSUED_ENABLE = True
                             self.reader_class.LOOKUP_STATE = True
 
                         self.ISSUED_INIT_FLAG = False
@@ -1088,16 +1071,9 @@ class Application:
                 self.current_bonus = int(self.db_class.calculateMemberBonus(self.current_money))
                 self.reader_class.current_bonus = int(self.db_class.calculateMemberBonus(self.reader_class.current_money))
 
-                # 발급 버튼에 추가하기
-                # self.db_class.loadConfigTable()
-                # self.card_price = self.db_class.getConfigArg("card_price")
-                # self.min_card_price = self.db_class.getConfigArg("min_card_price")
-
-                # bonus = int(self.db_class.calculateMemberBonus(self.current_money))  # 보너스 : 전체 투입금액에 대한 보너스 구함
-                # self.reader_class.bonus = int(bonus)  # 리더기에 사용할 변수에 투입금액에 대한 보너스 주입
-                # self.reader_class.current_bonus = int(self.reader_class.getBonus(self.main_input_money))  # 리더기에 사용할 변수에 투입금액에 대한 보너스 주입
-
-                self.charge_money = self.current_money + self.current_bonus  # 총전 전 잔액 = 투입금액 + 보너스
+                # 총전 전 잔액 = 투입금액 + 보너스
+                self.charge_money = self.current_money + self.current_bonus
+                self.reader_class.charge_money = self.reader_class.current_money + self.reader_class.current_bonus
 
                 if self.sound_class.getBusySound():
                     self.sound_class.stopSound()
@@ -1152,7 +1128,7 @@ class Application:
                     self.nextChargeButtonOnAnimate()
 
                 # 투입금액이 카드 발급 최소금액 보다 크면 다음 버튼 활성화
-                if self.current_money >= self.min_card_price:
+                if self.current_money >= self.db_class.getConfigArg("min_card_price"):
                     if self.isNextIssuedButtonAnimate():
                         self.issuedNextButtonAnimate()
                         self.btn_issued_next_gif.config(state="active")
