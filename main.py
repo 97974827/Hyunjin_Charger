@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import base64
 from collections import OrderedDict
 from tkinter import *
