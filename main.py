@@ -373,9 +373,8 @@ class Application:
 
             self.db_class.setAdminConfig(dic_save_admin)
 
-            # if not self.DEBUG:
-            #     if 'Linux' in platform.system():
-            #         self.window.attributes('-fullscreen', True)
+            if 'Linux' in platform.system():
+                self.tk_window.attributes('-fullscreen', True)
 
             if self.key_bored_process:
                 self.key_bored_process.kill()
@@ -408,9 +407,8 @@ class Application:
 
             self.db_class.setMasterConfig(dic_save_master)
 
-            # if not self.DEBUG:
-            #     if 'Linux' in platform.system():
-            #         self.window.attributes('-fullscreen', True)
+            if 'Linux' in platform.system():
+                self.tk_window.attributes('-fullscreen', True)
 
             if self.key_bored_process:
                 self.key_bored_process.kill()
