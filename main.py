@@ -268,7 +268,7 @@ class Application:
         self.db_class.loadConfigTable()
         self.showFrame(self.frame_login)  # 로그인 페이지 이동
         self.db_class.loadConfigTable()   # 활경설정 불러오기
-        # self.tk_window.attributes('-fullscreen', False)
+        self.tk_window.attributes('-fullscreen', False)
 
         # ADMIN 기입창 내용지우기
         self.entry_login.delete(0, END)
@@ -509,6 +509,7 @@ class Application:
         self.btn_lookup.config(state="active")
         self.btn_init_start.config(image=self.btn_init_start_image)
         self.showFrame(self.frame_main)
+        self.tk_window.attributes('-fullscreen', True)
 
         if self.sound_class.getBusySound():
             self.sound_class.stopSound()
